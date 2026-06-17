@@ -1,16 +1,28 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 
-export default function AnswerInput({ value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type a country…' }) {
+const AnswerInput = forwardRef(function AnswerInput(
+  { value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type a country…', flash, focusKey },
+  ref
+) {
   const inputRef = useRef()
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }))
 
   useEffect(() => {
     inputRef.current?.focus()
-  }, [])
+  }, [focusKey])
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') { e.preventDefault(); onSubmit?.() }
     if (e.key === 'Tab')   { e.preventDefault(); onSkip?.() }
   }
+
+  const borderClass =
+    flash === 'correct' ? 'border-success ring-2 ring-success/30' :
+    flash === 'wrong'   ? 'border-error ring-2 ring-error/30' :
+    'border-border-col focus:border-accent focus:ring-2'
 
   return (
     <div className="flex flex-col gap-2 w-full">
@@ -22,7 +34,7 @@ export default function AnswerInput({ value, onChange, onSubmit, onSkip, disable
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
-        className="w-full h-11 bg-subtle border border-border-col rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none focus:border-accent focus:ring-2 disabled:opacity-50"
+        className={`w-full h-11 bg-subtle border rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none disabled:opacity-50 transition-colors ${borderClass}`}
         style={{ '--tw-ring-color': 'var(--accent-glow)' }}
       />
       <div className="flex justify-end gap-4">
@@ -31,7 +43,7 @@ export default function AnswerInput({ value, onChange, onSubmit, onSkip, disable
           disabled={disabled}
           className="text-accent text-sm font-medium disabled:opacity-50 hover:text-accent-hover"
         >
-          Submit
+          Enter
         </button>
         <button
           onClick={onSkip}
@@ -43,4 +55,6 @@ export default function AnswerInput({ value, onChange, onSubmit, onSkip, disable
       </div>
     </div>
   )
-}
+})
+
+export default AnswerInput

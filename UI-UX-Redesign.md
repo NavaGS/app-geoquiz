@@ -159,32 +159,30 @@ Use an 8px base grid throughout. Key spacing tokens:
 
 ### 6.1 Home Page
 
-**Current:** Title + emoji, grid of colour-bordered mode cards, small admin link in footer area.
+**Current:** Title + emoji, grid of colour-bordered mode cards, admin link.
 
-**Proposed:** Two-zone layout.
+**Proposed:** Minimal two-section layout beneath the persistent Navbar.
 
-**Zone 1 — Hero header (full width, ~140px tall)**
-- Dark gradient background: `from-[#080D1A] to-[#0F1829]` (always dark regardless of colour mode)
-- Left: "GeoQuiz" wordmark in white (Inter 800) + tagline below in muted: *"Navigate the world."* in Inter 400
-- Right: Region selector pill + current personal best summary (top score across all modes)
-- Subtle animated star-field or latitude/longitude grid overlay (CSS-only, low opacity ~4%) for depth
-- No border at bottom — bleeds into page background
+**Section 1 — Page heading strip**
+- `--bg-base` background, `px-6 pt-6 pb-3`
+- Left: "Quiz Modes" heading (Inter 600, 18px, `--text-primary`)
+- No tagline or subtitle (removed — the Navbar already identifies the app)
+- No Settings button here — Settings is always accessible via the Navbar gear icon (§6.9)
 
-**Zone 2 — Mode grid**
-- Background: `--bg-base`
-- 2-column on mobile, 4-column on desktop (currently max 3 — the 8 modes fit better in 4)
-- Cards: `--bg-surface` background, `1px solid --border`, `border-radius: 12px`, `box-shadow: 0 1px 3px rgba(0,0,0,0.07)`
-- No coloured border on cards — the coloured accent is expressed through the icon and the "Play" button only
+**Section 2 — Mode grid**
+- `--bg-base` background
+- 2-column on mobile, 4-column on desktop
+- Cards: `--bg-surface`, `1px solid --border`, `border-radius: 12px`
 - Card anatomy (top to bottom):
-  1. Icon (Lucide, 24×24, mode accent colour)
-  2. Mode name (Inter 600, 16px, `--text-primary`)
-  3. Description (Inter 400, 13px, `--text-muted`, 2-line max)
-  4. Personal best chip: small pill `PB: 12` in `--bg-subtle` with `--text-muted` — unobtrusive
-  5. "Play →" button: full-width, mode accent colour background, white text, 8px radius
+  1. Icon (Lucide, 22×22, mode accent colour)
+  2. Mode name (Inter 600, 14px, `--text-primary`)
+  3. Description (Inter 400, 12px, `--text-muted`, 2-line max)
+  4. Fixed-height spacer (20px) — reserved whitespace, no PB chip displayed
+  5. "Start Quiz →" button: full-width, mode accent colour background, white text, 8px radius
 
-**Remove:** The inline admin link. Move it to a persistent top-right icon button in the hero header (the `LayoutDashboard` icon in white/ghost style).
+**Clicking a card navigates directly to the quiz** — no pre-quiz settings modal. All settings (region, difficulty, game play) are controlled globally via the Navbar Settings icon.
 
-**Settings access:** Clicking any mode card opens the Settings modal (unchanged in function, redesigned in form — see §6.6).
+**No Admin/Monitoring links** on the Home page — these are in the Navbar.
 
 ---
 
@@ -249,18 +247,20 @@ Use an 8px base grid throughout. Key spacing tokens:
 
 ---
 
-### 6.6 Settings Modal (pre-quiz)
+### 6.6 Global Settings Modal
 
-**Current:** White card, region dropdown, optional timer input, blue Start button.
+There is no per-quiz settings modal. Settings are global and apply to all quizzes. The modal is opened from the Navbar gear icon (accessible from any non-quiz page). Clicking "Start Quiz →" on the Home page navigates directly.
 
 **Proposed:** Slide-up sheet (mobile) / centred modal (desktop).
 
-- Backdrop: `rgba(8, 13, 26, 0.6)` — darker, more dramatic
-- Card: `--bg-surface`, `16px` radius top corners (sheet), full `12px` (modal)
-- Header: Mode icon (large, 32px, accent colour) + mode name + "Configure your quiz" subtitle
-- Region: Segmented control (pill buttons) instead of dropdown — All / Africa / Americas / Asia / Europe / Oceania laid out in 2×3 grid
-- Timer (Map only): Slider input `min=30 max=300 step=10` with live value display rather than bare number input
-- CTA: Full-width "Start Quiz →" button in `--accent`
+- Backdrop: `rgba(8, 13, 26, 0.65)`
+- Card: `--bg-surface`, `16px` radius, `max-h: 92vh`, scrollable
+- Sticky header: "Quiz Settings" + close X button
+- Three sections (separated by labelled headings):
+  1. **Region** — 3×2 grid of pill buttons (All / Africa / Americas / Asia / Europe / Oceania)
+  2. **Difficulty** — range slider (1–5, Very Easy → Very Hard) + All-Inclusive / Exact-Only toggle buttons
+  3. **Game Play** — Free Play / Countdown / Max Questions pill buttons; sub-options expand below when Countdown or Max Questions is selected
+- CTA: Full-width "Save Settings" button in `--accent`; animates to "Saved ✓" on save then closes
 
 ---
 
@@ -304,24 +304,17 @@ Use an 8px base grid throughout. Key spacing tokens:
 
 ---
 
-### 6.9 Admin Centre
+### 6.9 Countries Data (`/admin`)
 
-**Current:** Three tabs: Countries Data, Monitoring, Settings. Countries Data has a horizontal-scroll table.
+There is no Admin hub or sidebar. Countries Data lives directly at `/admin` and Monitoring at `/monitoring`. Both are linked from the Navbar via icon buttons (LHS, `Table2` and `Activity` icons with tooltips).
 
-**Proposed:** Sidebar layout (replaces tabs for desktop; tabs retained for mobile).
-
-**Left sidebar (220px, fixed):**
-- App logo/wordmark at top
-- Three nav items with Lucide icons: `Table2` Countries · `Activity` Monitoring · `SlidersHorizontal` Settings
-- Active item: accent left border + accent text
-- Bottom: version number, muted
-
-**Main area (flex-1):**
-- Countries Data: unchanged in function; table gets `--bg-surface` background, `--border` borders, row hover `--bg-subtle`. Sticky header gets `--bg-base` instead of `gray-100`.
-- Monitoring: charts re-skinned to match colour palette (replace Recharts default blue with `--accent`; dark mode charts use matching dark backgrounds)
-- Settings: unchanged in function, form elements restyled to match redesigned input/radio components
-
-**Rename "Admin Centre" → "Mission Control"** — fits the aerospace theme, retains the same meaning, and sounds more interesting than a generic admin panel. Route stays `/admin`.
+**Countries Data table:**
+- `--bg-surface` card, `--border` borders, row hover `--bg-subtle`, sticky `thead` on `--bg-base`
+- Sortable columns (name, capital, continent, sub-region, currency, language, difficulty)
+- Search input filters by country name
+- Warning border `--warning` on rows with missing data (capital, cities, boundary)
+- Difficulty shown as coloured badge (green Very Easy → red Very Hard)
+- No Settings tab — settings are in the GlobalSettingsModal (§6.6)
 
 ---
 
@@ -380,9 +373,7 @@ Use Tailwind's `class`-based dark mode strategy (`darkMode: 'class'` in `tailwin
 
 ### 7.2 Theme Toggle
 
-Add a theme toggle button to two persistent locations:
-1. Home page hero header — top-right alongside the Admin icon
-2. Admin Centre sidebar — bottom of the sidebar nav
+The theme toggle is in the Navbar (persistent across all non-quiz pages), RHS alongside the gear icon. Lucide `Sun` / `Moon` icons toggle with a 0.2s rotation animation.
 
 Use Lucide `Sun` / `Moon` icons. Toggle animates between them with a 0.2s rotation.
 
@@ -478,7 +469,7 @@ This allows Tailwind classes like `bg-surface`, `text-accent`, `border-border`.
 | Current | Proposed | Reason |
 |---|---|---|
 | GeoQuiz (title) | **GeoQuiz** | Keep — clean and direct |
-| "Admin Centre" | **Admin** | Cleaner, universally understood; drop "Centre" |
+| "Admin Centre" | **Countries Data** | No admin concept — page shows the countries data table directly |
 | "Session Complete!" | **Results** | Clear and direct — matches what the user expects after a quiz |
 | "Play →" | **Start Quiz** | Explicit action, no ambiguity |
 | "Skip" | **Skip** | Keep — universally understood |
@@ -684,7 +675,7 @@ With `darkMode: 'class'`, Tailwind's `dark:` variant responds to the `dark` clas
 5. **Quiz header + ScoreBar** — shared, high leverage
 6. **Results screen**
 7. **Map + Shape colour updates**
-8. **Admin sidebar layout**
+8. **Countries Data table styling** (at `/admin`)
 9. **Monitoring chart re-skin**
 10. **Icon swap** (Lucide) — can be done incrementally
 

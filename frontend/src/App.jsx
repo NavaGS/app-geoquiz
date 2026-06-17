@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import Navbar from './components/Navbar.jsx'
 import Home from './pages/Home.jsx'
 import FlagsQuiz from './pages/FlagsQuiz.jsx'
 import MapQuiz from './pages/MapQuiz.jsx'
@@ -14,6 +15,8 @@ import SessionEnd from './pages/SessionEnd.jsx'
 
 export default function App() {
   return (
+    <>
+      <Navbar />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/quiz/flags" element={<FlagsQuiz />} />
@@ -28,5 +31,6 @@ export default function App() {
       <Route path="/admin" element={<AdminCentre />} />
       <Route path="/session-end" element={<SessionEnd />} />
     </Routes>
+    </>
   )
 }

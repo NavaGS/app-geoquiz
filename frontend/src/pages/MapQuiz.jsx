@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import * as d3 from 'd3'
-import ScoreBar from '../components/ScoreBar.jsx'
-import SessionTimer from '../components/SessionTimer.jsx'
+import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
@@ -11,6 +9,7 @@ import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { getRegion } from '../utils/regionSettings.js'
 import { useTheme } from '../contexts/ThemeContext.jsx'
 
 // Countries whose geometry spans the antimeridian — use NaturalEarth instead of Mercator
@@ -22,9 +21,8 @@ const SMALL_COUNTRY_PX = 40
 export default function MapQuiz() {
   const location = useLocation()
   const navigate = useNavigate()
-  const state = location.state || {}
-  const region = state.region || 'All'
-  const timerDuration = state.timer || 30
+  const region = getRegion()
+  const timerDuration = location.state?.timer || 30
 
   const { theme } = useTheme()
 
@@ -424,25 +422,14 @@ export default function MapQuiz() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="flex-none bg-surface border-b border-border-col h-[52px] flex items-center px-4 gap-4 z-10">
-        <Link to="/" className="text-muted hover:text-primary transition-colors" aria-label="Back to home">
-          <ArrowLeft size={16} strokeWidth={1.5} />
-        </Link>
-        <div className="flex-1 flex items-center gap-2">
-          <span className="font-semibold text-primary text-sm">Map Location</span>
-          {region !== 'All' && (
-            <span className="bg-subtle text-muted text-xs px-2 py-0.5 rounded">{region}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <ScoreBar {...score} />
-          {showSessionTimer ? (
-            <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-          ) : (
-            <span className="text-xs font-mono text-muted">{timeLeft}s</span>
-          )}
-        </div>
-      </header>
+      <QuizHeader
+        modeName="Map Location"
+        region={region}
+        score={score}
+        sessionTimer={sessionTimer}
+        gp={gp}
+        counterLabel={`${timeLeft}s`}
+      />
 
       {/* Timer bar */}
       {showGpQTimer ? (
