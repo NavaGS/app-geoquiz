@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
@@ -112,7 +113,6 @@ export default function LanguageQuiz() {
     if (!answer.trim() || !current || feedback) return
     const res = await api.submitLanguageAnswer(current.isoA2, answer)
     setFlashState(res.result === 'CORRECT' ? 'correct' : res.result === 'CLOSE' ? 'close' : 'wrong')
-    // Map canonicalAnswer → canonicalName for FeedbackBanner
     const fb = { result: res.result, canonicalName: res.canonicalAnswer, allLanguages: res.allLanguages }
     setFeedback(fb)
     if (res.result === 'CORRECT') {
@@ -123,7 +123,7 @@ export default function LanguageQuiz() {
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -132,15 +132,25 @@ export default function LanguageQuiz() {
   const qIndex = total - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{total}</span>
-        )}
+    <div className="min-h-screen bg-base flex flex-col">
+      <header className="bg-surface border-b border-border-col h-[52px] flex items-center px-4 gap-4">
+        <Link to="/" className="text-muted hover:text-primary transition-colors" aria-label="Back to home">
+          <ArrowLeft size={16} strokeWidth={1.5} />
+        </Link>
+        <div className="flex-1 flex items-center gap-2">
+          <span className="font-semibold text-primary text-sm">Language</span>
+          {region !== 'All' && (
+            <span className="bg-subtle text-muted text-xs px-2 py-0.5 rounded">{region}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <ScoreBar {...score} />
+          {showSessionTimer ? (
+            <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
+          ) : (
+            <span className="text-xs font-mono text-muted">{qIndex}/{total}</span>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
@@ -153,19 +163,19 @@ export default function LanguageQuiz() {
           autoFlip={flipped}
           front={
             <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">What language(s) do they speak in {current.nameCommon}?</p>
+              <p className="text-xs text-muted uppercase tracking-widest">What language(s) do they speak in {current.nameCommon}?</p>
               {current.flagPngUrl && (
-                <div style={{ width: 240, height: 160 }} className="rounded shadow overflow-hidden border border-gray-200">
+                <div style={{ width: 240, height: 160 }} className="rounded-lg overflow-hidden border border-border-col shadow-sm">
                   <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
               )}
-              <p className="text-2xl font-bold text-gray-800">{current.nameCommon}</p>
+              <p className="text-2xl font-bold text-primary tracking-tight">{current.nameCommon}</p>
             </div>
           }
           back={
             <div className="text-center">
-              <p className="text-sm text-gray-500 mb-1">Languages spoken in {current.nameCommon}:</p>
-              <p className="text-xl font-semibold text-green-600">
+              <p className="text-sm text-muted mb-1">Languages spoken in {current.nameCommon}:</p>
+              <p className="text-xl font-semibold text-primary">
                 {current.languages && current.languages.length > 0
                   ? current.languages.join(', ')
                   : '—'}

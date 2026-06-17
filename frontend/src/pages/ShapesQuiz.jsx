@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import * as d3 from 'd3'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
@@ -12,14 +13,18 @@ import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { useTheme } from '../contexts/ThemeContext.jsx'
 
 function ShapeSvg({ geojsonStr }) {
+  const { theme } = useTheme()
   const rotationRef = useRef((Math.random() * 30 - 15).toFixed(1))
 
-  if (!geojsonStr) return <div className="text-gray-400 text-sm">No shape data</div>
+  const shapeFill = theme === 'dark' ? '#4F70FF' : '#1B3FE4'
+
+  if (!geojsonStr) return <div className="text-muted text-sm">No shape data</div>
 
   let geojson
-  try { geojson = JSON.parse(geojsonStr) } catch { return <div className="text-gray-400 text-sm">Invalid shape</div> }
+  try { geojson = JSON.parse(geojsonStr) } catch { return <div className="text-muted text-sm">Invalid shape</div> }
 
   const W = 280, H = 220, PAD = 16
   const feature = { type: 'Feature', geometry: geojson, properties: {} }
@@ -32,13 +37,13 @@ function ShapeSvg({ geojsonStr }) {
       .fitExtent([[PAD, PAD], [W - PAD, H - PAD]], feature)
     const pathGen = d3.geoPath().projection(projection)
     pathData = pathGen(feature)
-    if (!pathData || pathData.length < 10) return <div className="text-gray-400 text-sm">Shape unavailable</div>
+    if (!pathData || pathData.length < 10) return <div className="text-muted text-sm">Shape unavailable</div>
   } catch {
-    return <div className="text-gray-400 text-sm">Shape unavailable</div>
+    return <div className="text-muted text-sm">Shape unavailable</div>
   }
 
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
+    <div className="bg-surface rounded-xl p-4 shadow-sm border border-border-col">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full max-h-48"
@@ -51,7 +56,7 @@ function ShapeSvg({ geojsonStr }) {
         </defs>
         <path
           d={pathData}
-          fill="#0f766e"
+          fill={shapeFill}
           stroke="white"
           strokeWidth={1}
           filter="url(#shadow)"
@@ -83,7 +88,6 @@ export default function ShapesQuiz() {
   const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'shapes', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
-  // Session timer
   const sessionExpiredRef = useRef(false)
   const sessionTimer = useCountdownTimer({
     seconds: 60,
@@ -95,7 +99,6 @@ export default function ShapesQuiz() {
     },
   })
 
-  // Per-question timer
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
   useEffect(() => { currentRef.current = current }, [current])
@@ -142,7 +145,6 @@ export default function ShapesQuiz() {
     api.getShape(current.isoA2).then(d => setShapeData(d)).catch(() => setShapeData(null))
   }, [current])
 
-  // Per-question timer on current change
   useEffect(() => {
     const gp = gpRef.current
     if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
@@ -181,7 +183,7 @@ export default function ShapesQuiz() {
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -190,15 +192,25 @@ export default function ShapesQuiz() {
   const qIndex = queueSize - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{queueSize}</span>
-        )}
+    <div className="min-h-screen bg-base flex flex-col">
+      <header className="bg-surface border-b border-border-col h-[52px] flex items-center px-4 gap-4">
+        <Link to="/" className="text-muted hover:text-primary transition-colors" aria-label="Back to home">
+          <ArrowLeft size={16} strokeWidth={1.5} />
+        </Link>
+        <div className="flex-1 flex items-center gap-2">
+          <span className="font-semibold text-primary text-sm">Country Shape</span>
+          {region !== 'All' && (
+            <span className="bg-subtle text-muted text-xs px-2 py-0.5 rounded">{region}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <ScoreBar {...score} />
+          {showSessionTimer ? (
+            <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
+          ) : (
+            <span className="text-xs font-mono text-muted">{qIndex}/{queueSize}</span>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
@@ -211,14 +223,14 @@ export default function ShapesQuiz() {
           autoFlip={flipped}
           front={
             <div className="w-full flex flex-col items-center gap-2">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">Which country is this shape?</p>
+              <p className="text-xs text-muted uppercase tracking-widest">Which country is this shape?</p>
               <ShapeSvg geojsonStr={shapeData?.geojson} />
             </div>
           }
           back={
             <div className="text-center">
-              <p className="text-2xl font-bold text-teal-700">{current.nameCommon}</p>
-              <p className="text-sm text-gray-500 mt-1">{current.region}</p>
+              <p className="text-2xl font-bold text-primary tracking-tight">{current.nameCommon}</p>
+              <p className="text-sm text-muted mt-1">{current.region}</p>
             </div>
           }
         />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import FlipCard from './FlipCard.jsx'
 import AnswerInput from './AnswerInput.jsx'
 import FeedbackBanner from './FeedbackBanner.jsx'
@@ -12,7 +13,7 @@ import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
 
-export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn }) {
+export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn, modeName, modeLabel }) {
   const location = useLocation()
   const navigate = useNavigate()
   const state = location.state || {}
@@ -56,7 +57,6 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     onExpire: useCallback(() => {
       const c = currentRef.current
       if (!c) return
-      const gp = gpRef.current
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
       recordResult(iso, 'SKIP', null)
       advanceRef.current?.()
@@ -173,13 +173,13 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   }, [])
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading countries…</div>
-  if (error)   return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading countries…</div>
+  if (error)   return <div className="min-h-screen bg-base flex items-center justify-center text-error">{error}</div>
   if (!current) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-4">
-      <p className="text-xl font-semibold text-gray-700">No countries found</p>
-      <p className="text-gray-500">The database may still be seeding. Try refreshing in a moment.</p>
-      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Retry</button>
+    <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4 text-center px-4">
+      <p className="text-xl font-semibold text-primary">No countries found</p>
+      <p className="text-secondary">The database may still be seeding. Try refreshing in a moment.</p>
+      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-accent text-white rounded-lg hover:opacity-90">Retry</button>
     </div>
   )
 
@@ -189,15 +189,25 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   const qIndex = queueSize - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{queueSize}</span>
-        )}
+    <div className="min-h-screen bg-base flex flex-col">
+      <header className="bg-surface border-b border-border-col h-[52px] flex items-center px-4 gap-4">
+        <Link to="/" className="text-muted hover:text-primary transition-colors" aria-label="Back to home">
+          <ArrowLeft size={16} strokeWidth={1.5} />
+        </Link>
+        <div className="flex-1 flex items-center gap-2">
+          <span className="font-semibold text-primary text-sm">{modeName || mode}</span>
+          {region !== 'All' && (
+            <span className="bg-subtle text-muted text-xs px-2 py-0.5 rounded">{region}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <ScoreBar {...score} />
+          {showSessionTimer ? (
+            <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
+          ) : (
+            <span className="text-xs font-mono text-muted">{qIndex}/{queueSize}</span>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">

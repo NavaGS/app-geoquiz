@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react'
 
-export default function AnswerInput({ value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type country name…' }) {
+export default function AnswerInput({ value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type a country…' }) {
   const inputRef = useRef()
 
   useEffect(() => {
@@ -13,7 +13,7 @@ export default function AnswerInput({ value, onChange, onSubmit, onSkip, disable
   }
 
   return (
-    <div className="flex gap-2 w-full">
+    <div className="flex flex-col gap-2 w-full">
       <input
         ref={inputRef}
         type="text"
@@ -22,22 +22,25 @@ export default function AnswerInput({ value, onChange, onSubmit, onSkip, disable
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
-        className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+        className="w-full h-11 bg-subtle border border-border-col rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none focus:border-accent focus:ring-2 disabled:opacity-50"
+        style={{ '--tw-ring-color': 'var(--accent-glow)' }}
       />
-      <button
-        onClick={onSubmit}
-        disabled={disabled}
-        className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50"
-      >
-        Submit
-      </button>
-      <button
-        onClick={onSkip}
-        disabled={disabled}
-        className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 text-sm"
-      >
-        Skip
-      </button>
+      <div className="flex justify-end gap-4">
+        <button
+          onClick={onSubmit}
+          disabled={disabled}
+          className="text-accent text-sm font-medium disabled:opacity-50 hover:text-accent-hover"
+        >
+          Submit
+        </button>
+        <button
+          onClick={onSkip}
+          disabled={disabled}
+          className="text-muted text-sm disabled:opacity-50 hover:text-secondary"
+        >
+          Skip
+        </button>
+      </div>
     </div>
   )
 }

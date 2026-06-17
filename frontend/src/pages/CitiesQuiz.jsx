@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
@@ -32,7 +33,6 @@ export default function CitiesQuiz() {
   const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'cities', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
-  // Session timer
   const sessionExpiredRef = useRef(false)
   const sessionTimer = useCountdownTimer({
     seconds: 60,
@@ -44,7 +44,6 @@ export default function CitiesQuiz() {
     },
   })
 
-  // Per-question timer
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
   useEffect(() => { currentRef.current = current }, [current])
@@ -93,7 +92,6 @@ export default function CitiesQuiz() {
     })
   }, [region])
 
-  // Per-question timer on current change
   useEffect(() => {
     const gp = gpRef.current
     if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
@@ -132,7 +130,7 @@ export default function CitiesQuiz() {
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -141,15 +139,25 @@ export default function CitiesQuiz() {
   const qIndex = total - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{total}</span>
-        )}
+    <div className="min-h-screen bg-base flex flex-col">
+      <header className="bg-surface border-b border-border-col h-[52px] flex items-center px-4 gap-4">
+        <Link to="/" className="text-muted hover:text-primary transition-colors" aria-label="Back to home">
+          <ArrowLeft size={16} strokeWidth={1.5} />
+        </Link>
+        <div className="flex-1 flex items-center gap-2">
+          <span className="font-semibold text-primary text-sm">Major Cities</span>
+          {region !== 'All' && (
+            <span className="bg-subtle text-muted text-xs px-2 py-0.5 rounded">{region}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <ScoreBar {...score} />
+          {showSessionTimer ? (
+            <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
+          ) : (
+            <span className="text-xs font-mono text-muted">{qIndex}/{total}</span>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
@@ -162,16 +170,16 @@ export default function CitiesQuiz() {
           autoFlip={flipped}
           front={
             <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">Which country is this city in?</p>
-              <p className="text-4xl font-bold text-gray-800">{current.cityName}</p>
+              <p className="text-xs text-muted uppercase tracking-widest">Which country is this city in?</p>
+              <p className="text-4xl font-bold text-primary tracking-tight">{current.cityName}</p>
             </div>
           }
           back={
             <div className="text-center">
-              <p className="text-sm text-gray-500 mb-1">{current.cityName} is in</p>
-              <p className="text-2xl font-bold text-purple-600">{current.country.nameCommon}</p>
+              <p className="text-sm text-muted mb-1">{current.cityName} is in</p>
+              <p className="text-2xl font-bold text-primary tracking-tight">{current.country.nameCommon}</p>
               {current.country.flagPngUrl && (
-                <div style={{ width: 90, height: 60 }} className="mx-auto mt-2 rounded overflow-hidden border border-gray-200">
+                <div style={{ width: 90, height: 60 }} className="mx-auto mt-2 rounded-lg overflow-hidden border border-border-col">
                   <img src={current.country.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
               )}

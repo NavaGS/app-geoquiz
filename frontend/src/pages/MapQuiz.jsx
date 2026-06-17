@@ -1,14 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import * as d3 from 'd3'
 import ScoreBar from '../components/ScoreBar.jsx'
 import SessionTimer from '../components/SessionTimer.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
+import FeedbackBanner from '../components/FeedbackBanner.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { useTheme } from '../contexts/ThemeContext.jsx'
 
 // Countries whose geometry spans the antimeridian — use NaturalEarth instead of Mercator
 const ANTIMERIDIAN_ISOS = new Set(['FJ', 'RU', 'US', 'NZ', 'KI', 'TV', 'WS', 'TO'])
@@ -22,6 +25,14 @@ export default function MapQuiz() {
   const state = location.state || {}
   const region = state.region || 'All'
   const timerDuration = state.timer || 30
+
+  const { theme } = useTheme()
+
+  const colors = useMemo(() => theme === 'dark'
+    ? { water: '#0A1628', country: '#1A2744', highlight: '#4F70FF', highlightStroke: '#6B87FF', popoutFill: '#4F70FF', accent: '#6B87FF' }
+    : { water: '#C8D8EC', country: '#E4E9F0', highlight: '#60A5FA', highlightStroke: '#1B3FE4', popoutFill: '#1B3FE4', accent: '#1B3FE4' },
+    [theme]
+  )
 
   const containerRef = useRef()
   const svgRef = useRef()
@@ -47,7 +58,7 @@ export default function MapQuiz() {
   const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'map', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
-  // ── Session countdown timer (gameplay countdown mode) ───────────────────────
+  // ── Session countdown timer ──────────────────────────────────────────────────
   const sessionExpiredRef = useRef(false)
   const sessionTimer = useCountdownTimer({
     seconds: 60,
@@ -60,7 +71,7 @@ export default function MapQuiz() {
     },
   })
 
-  // ── Per-question timer (gameplay maxquestions + perQuestionTimer) ────────────
+  // ── Per-question timer ───────────────────────────────────────────────────────
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
   useEffect(() => { currentRef.current = current }, [current])
@@ -108,7 +119,7 @@ export default function MapQuiz() {
     }).catch(e => { console.error(e); setLoading(false) })
   }, [region])
 
-  // ── Build the stable world projection (once, or on resize) ──────────────────
+  // ── Build the stable world projection ───────────────────────────────────────
   function buildProjection(width, height, geoData) {
     const proj = d3.geoNaturalEarth1()
       .fitSize([width, height], geoData)
@@ -118,12 +129,12 @@ export default function MapQuiz() {
   }
 
   // ── Draw base world ──────────────────────────────────────────────────────────
-  function drawBase(svg, width, height, geoData, proj, pathGen) {
+  function drawBase(svg, width, height, geoData, proj, pathGen, clrs) {
     svg.selectAll('*').remove()
 
     svg.append('rect')
       .attr('width', width).attr('height', height)
-      .attr('fill', '#dbeafe')
+      .attr('fill', clrs.water)
 
     const g = svg.append('g').attr('class', 'world')
 
@@ -131,13 +142,13 @@ export default function MapQuiz() {
       .data(geoData.features || [])
       .join('path')
       .attr('d', pathGen)
-      .attr('fill', '#e2e8f0')
+      .attr('fill', clrs.country)
       .attr('stroke', '#ffffff')
       .attr('stroke-width', 0.4)
   }
 
   // ── Highlight current country ────────────────────────────────────────────────
-  function drawHighlight(svg, width, height, geoData, pathGen, isoA2) {
+  function drawHighlight(svg, width, height, geoData, pathGen, isoA2, clrs) {
     svg.selectAll('.highlight-layer').remove()
 
     const highlighted = geoData.features?.find(f => f.properties?.isoA2 === isoA2)
@@ -146,15 +157,15 @@ export default function MapQuiz() {
     const layer = svg.append('g').attr('class', 'highlight-layer')
 
     svg.select('g.world').selectAll('path')
-      .attr('fill', d => d.properties?.isoA2 === isoA2 ? '#bbf7d0' : '#e2e8f0')
-      .attr('stroke', d => d.properties?.isoA2 === isoA2 ? '#16a34a' : '#ffffff')
+      .attr('fill', d => d.properties?.isoA2 === isoA2 ? clrs.highlight : clrs.country)
+      .attr('stroke', d => d.properties?.isoA2 === isoA2 ? clrs.highlightStroke : '#ffffff')
       .attr('stroke-width', d => d.properties?.isoA2 === isoA2 ? 1 : 0.4)
 
     layer.append('path')
       .datum(highlighted)
       .attr('d', pathGen)
       .attr('fill', 'none')
-      .attr('stroke', '#15803d')
+      .attr('stroke', clrs.highlightStroke)
       .attr('stroke-width', 3)
       .attr('opacity', 0.35)
 
@@ -164,12 +175,12 @@ export default function MapQuiz() {
     const diagonal = Math.hypot(x1 - x0, y1 - y0)
 
     if (diagonal < SMALL_COUNTRY_PX) {
-      drawPopout(layer, svg, width, height, highlighted, pathGen, x0, y0, x1, y1)
+      drawPopout(layer, svg, width, height, highlighted, pathGen, x0, y0, x1, y1, clrs)
     }
   }
 
   // ── Popout inset for small countries ────────────────────────────────────────
-  function drawPopout(layer, svg, width, height, feature, _mainPathGen, x0, y0, x1, y1) {
+  function drawPopout(layer, svg, width, height, feature, _mainPathGen, x0, y0, x1, y1, clrs) {
     const cx = (x0 + x1) / 2
     const cy = (y0 + y1) / 2
 
@@ -191,7 +202,7 @@ export default function MapQuiz() {
     layer.append('circle')
       .attr('cx', cx).attr('cy', cy)
       .attr('r', 4)
-      .attr('fill', '#16a34a')
+      .attr('fill', clrs.accent)
       .attr('stroke', '#fff')
       .attr('stroke-width', 1.5)
 
@@ -199,7 +210,7 @@ export default function MapQuiz() {
       .attr('cx', cx).attr('cy', cy)
       .attr('r', 4)
       .attr('fill', 'none')
-      .attr('stroke', '#16a34a')
+      .attr('stroke', clrs.accent)
       .attr('stroke-width', 2)
       .attr('opacity', 0.8)
       .call(sel => {
@@ -215,7 +226,7 @@ export default function MapQuiz() {
     layer.append('line')
       .attr('x1', lineStartX).attr('y1', lineStartY)
       .attr('x2', cx).attr('y2', cy)
-      .attr('stroke', '#16a34a')
+      .attr('stroke', clrs.accent)
       .attr('stroke-width', 1.5)
       .attr('stroke-dasharray', '5,3')
       .attr('opacity', 0.7)
@@ -225,8 +236,8 @@ export default function MapQuiz() {
     inset.append('rect')
       .attr('width', IW).attr('height', IH)
       .attr('rx', 6)
-      .attr('fill', '#f0fdf4')
-      .attr('stroke', '#16a34a')
+      .attr('fill', 'var(--bg-surface)')
+      .attr('stroke', 'var(--border)')
       .attr('stroke-width', 1.5)
 
     const filterId = 'inset-shadow'
@@ -249,7 +260,7 @@ export default function MapQuiz() {
     inset.append('path')
       .datum(feature)
       .attr('d', insetPath)
-      .attr('fill', '#16a34a')
+      .attr('fill', clrs.popoutFill)
       .attr('stroke', '#fff')
       .attr('stroke-width', 1)
 
@@ -257,7 +268,7 @@ export default function MapQuiz() {
       .attr('x', IW / 2).attr('y', IH - 5)
       .attr('text-anchor', 'middle')
       .attr('font-size', 10)
-      .attr('fill', '#15803d')
+      .attr('fill', 'var(--text-muted)')
       .attr('opacity', 0.7)
       .text('zoomed view')
   }
@@ -274,11 +285,22 @@ export default function MapQuiz() {
 
     if (!projRef.current) {
       const { proj, pathGen } = buildProjection(width, height, geojson)
-      drawBase(svg, width, height, geojson, proj, pathGen)
+      drawBase(svg, width, height, geojson, proj, pathGen, colors)
     }
 
-    drawHighlight(svg, width, height, geojson, pathGenRef.current, current.isoA2)
-  }, [geojson, current])
+    drawHighlight(svg, width, height, geojson, pathGenRef.current, current.isoA2, colors)
+  }, [geojson, current, colors])
+
+  // ── Redraw on theme change ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!geojson || !svgRef.current || !projRef.current) return
+    const el = svgRef.current
+    const width = el.clientWidth || window.innerWidth
+    const height = el.clientHeight || window.innerHeight
+    const svg = d3.select(el)
+    drawBase(svg, width, height, geojson, projRef.current, pathGenRef.current, colors)
+    if (current) drawHighlight(svg, width, height, geojson, pathGenRef.current, current.isoA2, colors)
+  }, [colors])
 
   // ── Resize handler ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -292,14 +314,14 @@ export default function MapQuiz() {
 
       const svg = d3.select(svgRef.current)
       const { proj, pathGen } = buildProjection(width, height, geojsonRef.current)
-      drawBase(svg, width, height, geojsonRef.current, proj, pathGen)
-      if (current) drawHighlight(svg, width, height, geojsonRef.current, pathGen, current.isoA2)
+      drawBase(svg, width, height, geojsonRef.current, proj, pathGen, colors)
+      if (current) drawHighlight(svg, width, height, geojsonRef.current, pathGen, current.isoA2, colors)
     })
     observer.observe(containerRef.current)
     return () => observer.disconnect()
-  }, [current])
+  }, [current, colors])
 
-  // ── Built-in per-question timer (existing map quiz timer) ────────────────────
+  // ── Built-in per-question timer ──────────────────────────────────────────────
   useEffect(() => {
     if (!current) return
     setTimeLeft(timerDuration)
@@ -384,13 +406,13 @@ export default function MapQuiz() {
   }
 
   const timerPct = (timeLeft / timerDuration) * 100
-  const timerColor = timerPct > 50 ? 'bg-green-500' : timerPct > 25 ? 'bg-amber-500' : 'bg-red-500'
+  const timerBarColor = timerPct > 50 ? 'var(--success)' : timerPct > 25 ? 'var(--warning)' : 'var(--error)'
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading map…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading map…</div>
   if (!current) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-      <p className="text-xl font-semibold text-gray-700">No countries found</p>
-      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Retry</button>
+    <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4">
+      <p className="text-xl font-semibold text-primary">No countries found</p>
+      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-accent text-white rounded-lg hover:opacity-90">Retry</button>
     </div>
   )
 
@@ -402,24 +424,34 @@ export default function MapQuiz() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="flex-none bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between z-10">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800 text-sm">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm font-mono text-gray-600">{timeLeft}s</span>
-        )}
+      <header className="flex-none bg-surface border-b border-border-col h-[52px] flex items-center px-4 gap-4 z-10">
+        <Link to="/" className="text-muted hover:text-primary transition-colors" aria-label="Back to home">
+          <ArrowLeft size={16} strokeWidth={1.5} />
+        </Link>
+        <div className="flex-1 flex items-center gap-2">
+          <span className="font-semibold text-primary text-sm">Map Location</span>
+          {region !== 'All' && (
+            <span className="bg-subtle text-muted text-xs px-2 py-0.5 rounded">{region}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <ScoreBar {...score} />
+          {showSessionTimer ? (
+            <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
+          ) : (
+            <span className="text-xs font-mono text-muted">{timeLeft}s</span>
+          )}
+        </div>
       </header>
 
-      {/* Timer bar — built-in map per-question bar or gameplay per-question bar */}
+      {/* Timer bar */}
       {showGpQTimer ? (
         <div className="flex-none w-full">
           <QuestionTimer remaining={gpQuestionTimer.remaining} total={gp.perQuestionSecs} />
         </div>
       ) : (
-        <div className="flex-none w-full h-1 bg-gray-200">
-          <div className={`h-full transition-all duration-1000 ${timerColor}`} style={{ width: `${timerPct}%` }} />
+        <div className="flex-none w-full h-[3px] bg-subtle">
+          <div className="h-full transition-all duration-1000" style={{ width: `${timerPct}%`, backgroundColor: timerBarColor }} />
         </div>
       )}
 
@@ -429,7 +461,7 @@ export default function MapQuiz() {
 
         {flashState === 'wrong' && feedback?.canonicalName && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="bg-red-500 text-white text-xl font-bold px-4 py-2 rounded-xl opacity-90">
+            <span className="bg-error text-white text-xl font-bold px-4 py-2 rounded-xl opacity-90">
               {feedback.canonicalName}
             </span>
           </div>
@@ -437,9 +469,9 @@ export default function MapQuiz() {
       </div>
 
       {/* Input bar */}
-      <div className="flex-none bg-white border-t border-gray-200 px-4 py-3 z-10">
-        <p className="text-xs text-gray-400 text-center mb-2">Name the highlighted country</p>
-        <div className="flex gap-2 max-w-lg mx-auto">
+      <div className="flex-none bg-surface border-t border-border-col px-4 py-3 z-10">
+        <p className="text-xs text-muted text-center mb-2 uppercase tracking-widest">Name the highlighted country</p>
+        <div className="flex flex-col gap-2 max-w-lg mx-auto">
           <input
             ref={inputRef}
             type="text"
@@ -452,24 +484,26 @@ export default function MapQuiz() {
             placeholder="Country name…"
             disabled={!!feedback}
             autoFocus
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50 text-sm"
+            className="w-full h-11 bg-subtle border border-border-col rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none focus:border-accent disabled:opacity-50"
           />
-          <button onClick={handleSubmit} disabled={!!feedback}
-            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm">
-            Submit
-          </button>
-          <button onClick={() => { gpQuestionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
-            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm">
-            Skip
-          </button>
+          <div className="flex justify-end gap-4">
+            <button onClick={handleSubmit} disabled={!!feedback}
+              className="text-accent text-sm font-medium disabled:opacity-50 hover:opacity-80">
+              Submit
+            </button>
+            <button onClick={() => { gpQuestionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
+              className="text-muted text-sm disabled:opacity-50 hover:text-secondary">
+              Skip
+            </button>
+          </div>
         </div>
 
         {feedback?.result === 'CLOSE' && (
-          <div className="mt-2 max-w-lg mx-auto bg-amber-100 border border-amber-400 text-amber-800 rounded-lg px-4 py-2">
-            <p className="font-medium text-sm mb-1">{feedback.hint}</p>
+          <div className="mt-2 max-w-lg mx-auto border-l-4 border-warning pl-3 py-2">
+            <p className="text-warning font-medium text-sm mb-1">{feedback.hint}</p>
             <div className="flex gap-2">
-              <button onClick={handleConfirmClose} className="flex-1 py-1 bg-amber-400 text-white rounded-md text-sm">Yes!</button>
-              <button onClick={handleRetry} className="flex-1 py-1 bg-white border border-amber-400 rounded-md text-sm">Retype</button>
+              <button onClick={handleConfirmClose} className="px-3 py-1 bg-warning text-white rounded text-xs font-medium">Yes!</button>
+              <button onClick={handleRetry} className="px-3 py-1 border border-warning text-warning rounded text-xs">Retype</button>
             </div>
           </div>
         )}
