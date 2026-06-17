@@ -1,0 +1,479 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import * as d3 from 'd3'
+import ScoreBar from '../components/ScoreBar.jsx'
+import SessionTimer from '../components/SessionTimer.jsx'
+import QuestionTimer from '../components/QuestionTimer.jsx'
+import { useQuizSession } from '../hooks/useQuizSession.js'
+import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
+import { api } from '../api/client.js'
+import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
+import { getGameplaySettings } from '../utils/gameplaySettings.js'
+
+// Countries whose geometry spans the antimeridian — use NaturalEarth instead of Mercator
+const ANTIMERIDIAN_ISOS = new Set(['FJ', 'RU', 'US', 'NZ', 'KI', 'TV', 'WS', 'TO'])
+
+// Pixel diagonal threshold below which a popout inset is shown (covers micro-nations & small islands)
+const SMALL_COUNTRY_PX = 40
+
+export default function MapQuiz() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const state = location.state || {}
+  const region = state.region || 'All'
+  const timerDuration = state.timer || 30
+
+  const containerRef = useRef()
+  const svgRef = useRef()
+  const projRef = useRef(null)
+  const pathGenRef = useRef(null)
+  const geojsonRef = useRef(null)
+
+  const [geojson, setGeojson] = useState(null)
+  const [countries, setCountries] = useState([])
+  const [queue, setQueue] = useState([])
+  const [queueSize, setQueueSize] = useState(0)
+  const [current, setCurrent] = useState(null)
+  const [answer, setAnswer] = useState('')
+  const [feedback, setFeedback] = useState(null)
+  const [flashState, setFlashState] = useState(null)
+  const [timeLeft, setTimeLeft] = useState(timerDuration)
+  const [loading, setLoading] = useState(true)
+  const inputRef = useRef()
+  const timerRef = useRef()
+
+  const gpRef = useRef(null)
+  const scoreRef = useRef(null)
+  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'map', region })
+  useEffect(() => { scoreRef.current = score }, [score])
+
+  // ── Session countdown timer (gameplay countdown mode) ───────────────────────
+  const sessionExpiredRef = useRef(false)
+  const sessionTimer = useCountdownTimer({
+    seconds: 60,
+    onExpire: () => {
+      if (sessionExpiredRef.current) return
+      sessionExpiredRef.current = true
+      clearInterval(timerRef.current)
+      const isNewBest = savePersonalBest()
+      navigate('/session-end', { state: { score: scoreRef.current, mode: 'map', region, isNewBest } })
+    },
+  })
+
+  // ── Per-question timer (gameplay maxquestions + perQuestionTimer) ────────────
+  const advanceRef = useRef(null)
+  const currentRef = useRef(null)
+  useEffect(() => { currentRef.current = current }, [current])
+
+  const gpQuestionTimer = useCountdownTimer({
+    seconds: 15,
+    onExpire: () => {
+      const c = currentRef.current
+      if (!c) return
+      recordResult(c.isoA2, 'SKIP', null)
+      advanceRef.current?.()
+    },
+  })
+
+  // ── Data load ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    Promise.all([
+      api.getCountries(region),
+      api.getWorldGeoJson(region),
+    ]).then(([countriesData, geoData]) => {
+      const gp = getGameplaySettings()
+      gpRef.current = gp
+
+      const { rating, mode } = getDifficultySettings()
+      const modeFiltered = countriesData.filter(c => !!c.hasBoundary)
+      const filtered = modeFiltered.filter(difficultyFilter(rating, mode))
+      let shuffled = [...filtered].sort(() => Math.random() - 0.5)
+
+      if (gp.mode === 'maxquestions') {
+        shuffled = shuffled.slice(0, Math.min(shuffled.length, gp.maxQuestions))
+      }
+
+      setCountries(shuffled)
+      setQueueSize(shuffled.length)
+      setQueue(shuffled)
+      setCurrent(shuffled[0])
+      const parsed = typeof geoData === 'string' ? JSON.parse(geoData) : geoData
+      geojsonRef.current = parsed
+      setGeojson(parsed)
+      setLoading(false)
+
+      if (gp.mode === 'countdown') {
+        sessionTimer.startFrom(gp.countdownSecs)
+      }
+    }).catch(e => { console.error(e); setLoading(false) })
+  }, [region])
+
+  // ── Build the stable world projection (once, or on resize) ──────────────────
+  function buildProjection(width, height, geoData) {
+    const proj = d3.geoNaturalEarth1()
+      .fitSize([width, height], geoData)
+    projRef.current = proj
+    pathGenRef.current = d3.geoPath().projection(proj)
+    return { proj, pathGen: pathGenRef.current }
+  }
+
+  // ── Draw base world ──────────────────────────────────────────────────────────
+  function drawBase(svg, width, height, geoData, proj, pathGen) {
+    svg.selectAll('*').remove()
+
+    svg.append('rect')
+      .attr('width', width).attr('height', height)
+      .attr('fill', '#dbeafe')
+
+    const g = svg.append('g').attr('class', 'world')
+
+    g.selectAll('path')
+      .data(geoData.features || [])
+      .join('path')
+      .attr('d', pathGen)
+      .attr('fill', '#e2e8f0')
+      .attr('stroke', '#ffffff')
+      .attr('stroke-width', 0.4)
+  }
+
+  // ── Highlight current country ────────────────────────────────────────────────
+  function drawHighlight(svg, width, height, geoData, pathGen, isoA2) {
+    svg.selectAll('.highlight-layer').remove()
+
+    const highlighted = geoData.features?.find(f => f.properties?.isoA2 === isoA2)
+    if (!highlighted) return
+
+    const layer = svg.append('g').attr('class', 'highlight-layer')
+
+    svg.select('g.world').selectAll('path')
+      .attr('fill', d => d.properties?.isoA2 === isoA2 ? '#bbf7d0' : '#e2e8f0')
+      .attr('stroke', d => d.properties?.isoA2 === isoA2 ? '#16a34a' : '#ffffff')
+      .attr('stroke-width', d => d.properties?.isoA2 === isoA2 ? 1 : 0.4)
+
+    layer.append('path')
+      .datum(highlighted)
+      .attr('d', pathGen)
+      .attr('fill', 'none')
+      .attr('stroke', '#15803d')
+      .attr('stroke-width', 3)
+      .attr('opacity', 0.35)
+
+    let bounds
+    try { bounds = pathGen.bounds(highlighted) } catch { return }
+    const [[x0, y0], [x1, y1]] = bounds
+    const diagonal = Math.hypot(x1 - x0, y1 - y0)
+
+    if (diagonal < SMALL_COUNTRY_PX) {
+      drawPopout(layer, svg, width, height, highlighted, pathGen, x0, y0, x1, y1)
+    }
+  }
+
+  // ── Popout inset for small countries ────────────────────────────────────────
+  function drawPopout(layer, svg, width, height, feature, _mainPathGen, x0, y0, x1, y1) {
+    const cx = (x0 + x1) / 2
+    const cy = (y0 + y1) / 2
+
+    const IW = 240, IH = 190
+    const MARGIN = 16
+
+    let ix = width - IW - MARGIN
+    let iy = height - IH - MARGIN
+    if (cx > width * 0.6 && cy > height * 0.6) { ix = MARGIN; iy = MARGIN }
+    else if (cx > width * 0.6) { ix = MARGIN; iy = height - IH - MARGIN }
+    else if (cy > height * 0.6) { ix = width - IW - MARGIN; iy = MARGIN }
+
+    const insetCx = ix + IW / 2
+    const insetCy = iy + IH / 2
+
+    const lineStartX = cx < insetCx ? ix : ix + IW
+    const lineStartY = cy < insetCy ? iy : iy + IH
+
+    layer.append('circle')
+      .attr('cx', cx).attr('cy', cy)
+      .attr('r', 4)
+      .attr('fill', '#16a34a')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1.5)
+
+    layer.append('circle')
+      .attr('cx', cx).attr('cy', cy)
+      .attr('r', 4)
+      .attr('fill', 'none')
+      .attr('stroke', '#16a34a')
+      .attr('stroke-width', 2)
+      .attr('opacity', 0.8)
+      .call(sel => {
+        function pulse() {
+          sel.attr('r', 4).attr('opacity', 0.8)
+            .transition().duration(1200)
+            .attr('r', 18).attr('opacity', 0)
+            .on('end', pulse)
+        }
+        pulse()
+      })
+
+    layer.append('line')
+      .attr('x1', lineStartX).attr('y1', lineStartY)
+      .attr('x2', cx).attr('y2', cy)
+      .attr('stroke', '#16a34a')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '5,3')
+      .attr('opacity', 0.7)
+
+    const inset = layer.append('g').attr('transform', `translate(${ix},${iy})`)
+
+    inset.append('rect')
+      .attr('width', IW).attr('height', IH)
+      .attr('rx', 6)
+      .attr('fill', '#f0fdf4')
+      .attr('stroke', '#16a34a')
+      .attr('stroke-width', 1.5)
+
+    const filterId = 'inset-shadow'
+    if (svg.select(`#${filterId}`).empty()) {
+      const defs = svg.append('defs')
+      const filter = defs.append('filter').attr('id', filterId)
+      filter.append('feDropShadow')
+        .attr('dx', 0).attr('dy', 2)
+        .attr('stdDeviation', 4)
+        .attr('flood-opacity', 0.2)
+    }
+    inset.attr('filter', `url(#${filterId})`)
+
+    const centroid = d3.geoCentroid(feature)
+    const insetProj = d3.geoAzimuthalEqualArea()
+      .rotate([-centroid[0], -centroid[1]])
+      .fitExtent([[8, 8], [IW - 8, IH - 22]], feature)
+    const insetPath = d3.geoPath().projection(insetProj)
+
+    inset.append('path')
+      .datum(feature)
+      .attr('d', insetPath)
+      .attr('fill', '#16a34a')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1)
+
+    inset.append('text')
+      .attr('x', IW / 2).attr('y', IH - 5)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 10)
+      .attr('fill', '#15803d')
+      .attr('opacity', 0.7)
+      .text('zoomed view')
+  }
+
+  // ── Main render effect ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!geojson || !svgRef.current || !current) return
+
+    const el = svgRef.current
+    const width = el.clientWidth || window.innerWidth
+    const height = el.clientHeight || window.innerHeight
+
+    const svg = d3.select(el)
+
+    if (!projRef.current) {
+      const { proj, pathGen } = buildProjection(width, height, geojson)
+      drawBase(svg, width, height, geojson, proj, pathGen)
+    }
+
+    drawHighlight(svg, width, height, geojson, pathGenRef.current, current.isoA2)
+  }, [geojson, current])
+
+  // ── Resize handler ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!containerRef.current) return
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0]
+      if (!entry || !geojsonRef.current || !svgRef.current) return
+      const width = entry.contentRect.width
+      const height = entry.contentRect.height
+      if (width < 10 || height < 10) return
+
+      const svg = d3.select(svgRef.current)
+      const { proj, pathGen } = buildProjection(width, height, geojsonRef.current)
+      drawBase(svg, width, height, geojsonRef.current, proj, pathGen)
+      if (current) drawHighlight(svg, width, height, geojsonRef.current, pathGen, current.isoA2)
+    })
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [current])
+
+  // ── Built-in per-question timer (existing map quiz timer) ────────────────────
+  useEffect(() => {
+    if (!current) return
+    setTimeLeft(timerDuration)
+    clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0 }
+        return t - 1
+      })
+    }, 1000)
+    return () => clearInterval(timerRef.current)
+  }, [current])
+
+  // ── Gameplay per-question timer ──────────────────────────────────────────────
+  useEffect(() => {
+    const gp = gpRef.current
+    if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
+    if (!current) return
+    gpQuestionTimer.startFrom(gp.perQuestionSecs)
+  }, [current])
+
+  function handleTimeout() {
+    if (!current) return
+    setFlashState('wrong')
+    setFeedback({ result: 'WRONG', timeout: true, canonicalName: current.nameCommon })
+    recordResult(current.isoA2, 'WRONG', current.nameCommon)
+    setTimeout(advance, 800)
+  }
+
+  const advance = useCallback(() => {
+    setAnswer('')
+    setFeedback(null)
+    setFlashState(null)
+    clearInterval(timerRef.current)
+    gpQuestionTimer.stop()
+    setQueue(prev => {
+      const next = prev.slice(1)
+      if (next.length === 0) {
+        navigate('/session-end', { state: { score, mode: 'map', region, isNewBest: savePersonalBest() } })
+        return prev
+      }
+      setCurrent(next[0])
+      return next
+    })
+  }, [score, navigate, region, savePersonalBest, gpQuestionTimer])
+
+  useEffect(() => { advanceRef.current = advance }, [advance])
+
+  async function handleSubmit() {
+    if (!answer.trim() || !current || feedback) return
+    clearInterval(timerRef.current)
+    gpQuestionTimer.stop()
+    const result = await submitAnswer(current.isoA2, answer)
+    setFlashState(result.result === 'CORRECT' ? 'correct' : result.result === 'CLOSE' ? 'close' : 'wrong')
+    setFeedback(result)
+    if (result.result === 'CORRECT') {
+      recordResult(current.isoA2, 'CORRECT', result.canonicalName)
+      setTimeout(advance, 1200)
+    } else if (result.result === 'WRONG') {
+      recordResult(current.isoA2, 'WRONG', null)
+      setTimeout(advance, 800)
+    }
+  }
+
+  function handleConfirmClose() {
+    recordResult(current.isoA2, 'CORRECT', feedback.canonicalName)
+    setTimeout(advance, 800)
+  }
+
+  function handleRetry() {
+    setFeedback(null)
+    setFlashState(null)
+    setAnswer('')
+    setTimeLeft(timerDuration)
+    clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0 }
+        return t - 1
+      })
+    }, 1000)
+  }
+
+  const timerPct = (timeLeft / timerDuration) * 100
+  const timerColor = timerPct > 50 ? 'bg-green-500' : timerPct > 25 ? 'bg-amber-500' : 'bg-red-500'
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading map…</div>
+  if (!current) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+      <p className="text-xl font-semibold text-gray-700">No countries found</p>
+      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Retry</button>
+    </div>
+  )
+
+  const gp = gpRef.current || { mode: 'none' }
+  const showSessionTimer = gp.mode === 'countdown'
+  const showGpQTimer = gp.mode === 'maxquestions' && gp.perQuestionTimer
+  const qIndex = queueSize - queue.length + 1
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* Header */}
+      <header className="flex-none bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between z-10">
+        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800 text-sm">← Home</button>
+        <ScoreBar {...score} />
+        {showSessionTimer ? (
+          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
+        ) : (
+          <span className="text-sm font-mono text-gray-600">{timeLeft}s</span>
+        )}
+      </header>
+
+      {/* Timer bar — built-in map per-question bar or gameplay per-question bar */}
+      {showGpQTimer ? (
+        <div className="flex-none w-full">
+          <QuestionTimer remaining={gpQuestionTimer.remaining} total={gp.perQuestionSecs} />
+        </div>
+      ) : (
+        <div className="flex-none w-full h-1 bg-gray-200">
+          <div className={`h-full transition-all duration-1000 ${timerColor}`} style={{ width: `${timerPct}%` }} />
+        </div>
+      )}
+
+      {/* Map */}
+      <div ref={containerRef} className="flex-1 relative overflow-hidden">
+        <svg ref={svgRef} className="w-full h-full block" />
+
+        {flashState === 'wrong' && feedback?.canonicalName && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="bg-red-500 text-white text-xl font-bold px-4 py-2 rounded-xl opacity-90">
+              {feedback.canonicalName}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Input bar */}
+      <div className="flex-none bg-white border-t border-gray-200 px-4 py-3 z-10">
+        <p className="text-xs text-gray-400 text-center mb-2">Name the highlighted country</p>
+        <div className="flex gap-2 max-w-lg mx-auto">
+          <input
+            ref={inputRef}
+            type="text"
+            value={answer}
+            onChange={e => setAnswer(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleSubmit()
+              if (e.key === 'Tab') { e.preventDefault(); gpQuestionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }
+            }}
+            placeholder="Country name…"
+            disabled={!!feedback}
+            autoFocus
+            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50 text-sm"
+          />
+          <button onClick={handleSubmit} disabled={!!feedback}
+            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm">
+            Submit
+          </button>
+          <button onClick={() => { gpQuestionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
+            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm">
+            Skip
+          </button>
+        </div>
+
+        {feedback?.result === 'CLOSE' && (
+          <div className="mt-2 max-w-lg mx-auto bg-amber-100 border border-amber-400 text-amber-800 rounded-lg px-4 py-2">
+            <p className="font-medium text-sm mb-1">{feedback.hint}</p>
+            <div className="flex gap-2">
+              <button onClick={handleConfirmClose} className="flex-1 py-1 bg-amber-400 text-white rounded-md text-sm">Yes!</button>
+              <button onClick={handleRetry} className="flex-1 py-1 bg-white border border-amber-400 rounded-md text-sm">Retype</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
