@@ -130,7 +130,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       questionTimer.stop()
       recordResult(question.iso, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1500)
+      setTimeout(advance, 700)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -148,7 +148,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     if (feedback.result === 'CLOSE') {
       recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1200)
+      setTimeout(advance, 700)
     } else {
       recordResult(getQuestion(current).iso, 'SKIP', null)
       advance()
@@ -209,7 +209,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard

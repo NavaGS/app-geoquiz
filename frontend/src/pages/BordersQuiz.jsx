@@ -120,7 +120,7 @@ export default function BordersQuiz() {
       setFeedback(fb)
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
       setFlipped(true)
-      setTimeout(advance, 2000)
+      setTimeout(advance, 700)
     } else {
       setAnswer('')
       setFlashState('wrong')
@@ -143,7 +143,7 @@ export default function BordersQuiz() {
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard

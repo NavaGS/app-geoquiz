@@ -176,7 +176,7 @@ export default function ShapesQuiz() {
       questionTimer.stop()
       recordResult(current.isoA2, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1500)
+      setTimeout(advance, 700)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -202,7 +202,7 @@ export default function ShapesQuiz() {
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard
@@ -239,7 +239,7 @@ export default function ShapesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 1200) }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
             else { recordResult(current.isoA2, 'SKIP', null); advance() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}

@@ -11,9 +11,9 @@ export default function SessionTimer({ remaining, total }) {
 
   return (
     <div className={`flex items-center gap-2 ${urgent ? 'text-error' : 'text-primary'}`}>
-      <svg width="36" height="4" viewBox="0 0 36 4" className="shrink-0">
-        <rect x="0" y="0" width="36" height="4" rx="2" fill="var(--border)" />
-        <rect x="0" y="0" width={36 * pct / 100} height="4" rx="2" fill={color}
+      <svg width="144" height="4" viewBox="0 0 144 4" className="shrink-0">
+        <rect x="0" y="0" width="144" height="4" rx="2" fill="var(--border)" />
+        <rect x="0" y="0" width={144 * pct / 100} height="4" rx="2" fill={color}
           style={{ transition: 'width 1s linear, fill 0.5s ease' }} />
       </svg>
       <span className="font-mono text-sm font-semibold tabular-nums">{fmt(remaining)}</span>

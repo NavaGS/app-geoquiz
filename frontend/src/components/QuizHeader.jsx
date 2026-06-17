@@ -21,7 +21,7 @@ export default function QuizHeader({ modeName, region, score, sessionTimer, gp, 
         <ScoreBar {...score} />
         {showSessionTimer
           ? <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-          : <span className="text-xs font-mono text-muted tabular-nums">{counterLabel ?? `${qIndex}/${total}`}</span>
+          : <span className="text-xs font-mono text-muted tabular-nums">{counterLabel ?? `Question ${qIndex} / ${total}`}</span>
         }
       </div>
     </header>
