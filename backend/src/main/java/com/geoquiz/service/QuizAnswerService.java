@@ -33,9 +33,17 @@ public class QuizAnswerService {
                 .or(() -> countryRepository.findByIsoA3IgnoreCase(request.getCountryIso()))
                 .orElseThrow(() -> new IllegalArgumentException("Country not found: " + request.getCountryIso()));
 
+        String mode = request.getMode() != null ? request.getMode().toLowerCase() : "";
         String normalizedAnswer = normalize(request.getAnswer());
 
-        // Collect all names to match against
+        if ("capitals".equals(mode)) {
+            return evaluateCapital(country, normalizedAnswer, request.getAnswer());
+        }
+        if ("currency".equals(mode)) {
+            return evaluateCurrency(country, normalizedAnswer, request.getAnswer());
+        }
+
+        // Default: match against country name
         List<String> candidates = new ArrayList<>();
         candidates.add(country.getNameCommon());
         candidates.add(country.getNameOfficial());
@@ -43,33 +51,50 @@ public class QuizAnswerService {
             candidates.add(alias.getAlias());
         }
 
-        // Exact match check
+        return matchCandidates(candidates, country.getNameCommon(), normalizedAnswer, request.getAnswer());
+    }
+
+    private AnswerResponse evaluateCapital(Country country, String normalizedAnswer, String rawAnswer) {
+        String capital = country.getCapital();
+        if (capital == null || capital.isBlank()) return AnswerResponse.wrong(0.0);
+
+        List<String> candidates = new ArrayList<>();
+        candidates.add(capital);
+
+        return matchCandidates(candidates, capital, normalizedAnswer, rawAnswer);
+    }
+
+    private AnswerResponse evaluateCurrency(Country country, String normalizedAnswer, String rawAnswer) {
+        List<String> candidates = new ArrayList<>();
+        if (country.getCurrencyName() != null) candidates.add(country.getCurrencyName());
+        if (country.getCurrencyCode() != null) candidates.add(country.getCurrencyCode());
+
+        if (candidates.isEmpty()) return AnswerResponse.wrong(0.0);
+        String canonical = country.getCurrencyName() != null ? country.getCurrencyName() : country.getCurrencyCode();
+
+        return matchCandidates(candidates, canonical, normalizedAnswer, rawAnswer);
+    }
+
+    private AnswerResponse matchCandidates(List<String> candidates, String canonical, String normalizedAnswer, String rawAnswer) {
         for (String candidate : candidates) {
             if (candidate != null && normalize(candidate).equals(normalizedAnswer)) {
-                log.info("Quiz answer CORRECT exact match: country={} answer={}", country.getNameCommon(), request.getAnswer());
-                return AnswerResponse.correct(country.getNameCommon());
+                log.info("Quiz answer CORRECT exact match: canonical={} answer={}", canonical, rawAnswer);
+                return AnswerResponse.correct(canonical);
             }
         }
 
-        // Fuzzy match
         double bestScore = 0.0;
         for (String candidate : candidates) {
             if (candidate == null) continue;
             double score = jaroWinkler.apply(normalize(candidate), normalizedAnswer);
-            if (score > bestScore) {
-                bestScore = score;
-            }
+            if (score > bestScore) bestScore = score;
         }
 
-        log.info("Quiz answer fuzzy score: country={} answer={} score={}", country.getNameCommon(), request.getAnswer(), bestScore);
+        log.info("Quiz answer fuzzy score: canonical={} answer={} score={}", canonical, rawAnswer, bestScore);
 
-        if (bestScore >= CORRECT_THRESHOLD) {
-            return AnswerResponse.correct(country.getNameCommon());
-        } else if (bestScore >= CLOSE_THRESHOLD) {
-            return AnswerResponse.close(country.getNameCommon(), bestScore);
-        } else {
-            return AnswerResponse.wrong(bestScore);
-        }
+        if (bestScore >= CORRECT_THRESHOLD) return AnswerResponse.correct(canonical);
+        if (bestScore >= CLOSE_THRESHOLD)   return AnswerResponse.close(canonical, bestScore);
+        return AnswerResponse.wrong(bestScore);
     }
 
     private String normalize(String input) {

@@ -1,26 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
-import ScoreBar from '../components/ScoreBar.jsx'
-import SessionTimer from '../components/SessionTimer.jsx'
+import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { getRegion } from '../utils/regionSettings.js'
 
 export default function BordersQuiz() {
-  const location = useLocation()
   const navigate = useNavigate()
-  const state = location.state || {}
-  const region = state.region || 'All'
+  const region = getRegion()
 
   const [queue, setQueue] = useState([])
   const [total, setTotal] = useState(0)
   const [current, setCurrent] = useState(null)
+  const inputRef = useRef()
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState(null)
   const [flashState, setFlashState] = useState(null)
@@ -121,14 +120,16 @@ export default function BordersQuiz() {
       setFeedback(fb)
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
       setFlipped(true)
-      setTimeout(advance, 2000)
+      setTimeout(advance, 700)
     } else {
+      setAnswer('')
       setFlashState('wrong')
-      setFeedback({ result: 'WRONG', canonicalName: null, borderNames })
+      setFeedback(null)
+      setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -137,59 +138,53 @@ export default function BordersQuiz() {
   const qIndex = total - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{total}</span>
-        )}
-      </header>
+    <div className="min-h-screen bg-base flex flex-col">
+      <QuizHeader modeName="Borders" region={region} score={score} sessionTimer={sessionTimer} gp={gp} qIndex={qIndex} total={total} />
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard
           flashState={flashState}
           autoFlip={flipped}
           front={
-            <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">Name a country that borders {current.nameCommon}</p>
-              {current.flagPngUrl && (
-                <div style={{ width: 240, height: 160 }} className="rounded shadow overflow-hidden border border-gray-200">
-                  <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                </div>
-              )}
-              <p className="text-2xl font-bold text-gray-800">{current.nameCommon}</p>
+            <div className="flex flex-col items-center justify-center gap-2 text-center h-full">
+              <p className="text-xs text-muted uppercase tracking-widest">Name a bordering country</p>
+              <div className="flex items-center gap-3">
+                {current.flagPngUrl && (
+                  <div style={{ width: 72, height: 48, flexShrink: 0 }} className="rounded overflow-hidden border border-border-col shadow-sm">
+                    <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  </div>
+                )}
+                <p className="text-2xl font-bold text-primary tracking-tight text-left">{current.nameCommon}</p>
+              </div>
               {feedback?.result === 'CORRECT' && (
-                <p className="text-sm font-semibold text-teal-600">{feedback.canonicalAnswer} ✓</p>
-              )}
-              {feedback?.result === 'CORRECT' && lastBorderNames.length > 0 && (
-                <p className="text-xs text-gray-400">All borders: {lastBorderNames.join(', ')}</p>
+                <p className="text-sm font-semibold text-success">{feedback.canonicalName} ✓</p>
               )}
             </div>
           }
           back={
-            <div className="text-center">
-              <p className="text-sm text-gray-500 mb-1">Countries bordering {current.nameCommon}:</p>
-              <p className="text-lg font-semibold text-indigo-600">
-                {lastBorderNames.length > 0 ? lastBorderNames.join(', ') : '—'}
+            <div className="flex flex-col items-center justify-center text-center h-full gap-2">
+              <p className="text-xs text-muted uppercase tracking-widest">Borders of {current.nameCommon}</p>
+              <p className="text-sm font-semibold text-primary leading-relaxed">
+                {lastBorderNames.length > 0 ? lastBorderNames.join(' · ') : '—'}
               </p>
             </div>
           }
         />
 
         <AnswerInput
+          ref={inputRef}
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
           onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type a bordering country…"
+          flash={flashState}
+          focusKey={qIndex}
         />
 
         <FeedbackBanner
@@ -201,7 +196,7 @@ export default function BordersQuiz() {
             recordResult(current.isoA2, 'SKIP', null)
             advance()
           }}
-          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer('') }}
+          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
       </main>
     </div>

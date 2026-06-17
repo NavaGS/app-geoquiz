@@ -2,9 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-base: #F4F6FB;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #EDF0F7;
+  --border: #D8DEEB;
+  --text-primary: #0D1526;
+  --text-secondary: #4A5568;
+  --text-muted: #8896A8;
+  --accent: #1B3FE4;
+  --accent-hover: #1432C0;
+  --accent-glow: rgba(27, 63, 228, 0.12);
+  --success: #059669;
+  --warning: #D97706;
+  --error: #DC2626;
+}
+
+.dark {
+  --bg-base: #080D1A;
+  --bg-surface: #0F1829;
+  --bg-subtle: #162136;
+  --border: #1E2E47;
+  --text-primary: #E8EDF5;
+  --text-secondary: #8EA4BF;
+  --text-muted: #4D637A;
+  --accent: #4F70FF;
+  --accent-hover: #6B87FF;
+  --accent-glow: rgba(79, 112, 255, 0.15);
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #F87171;
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-base text-primary font-sans;
   }
 }
 
@@ -17,7 +49,7 @@
     position: relative;
     width: 100%;
     height: 100%;
-    transition: transform 0.3s ease;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     transform-style: preserve-3d;
   }
 
@@ -41,20 +73,31 @@
 
 @keyframes flash-green {
   0%, 100% { background-color: transparent; }
-  50% { background-color: #22c55e33; }
+  50% { background-color: rgba(var(--success-rgb, 5, 150, 105), 0.15); }
 }
 
 @keyframes flash-red {
   0%, 100% { background-color: transparent; }
-  25%, 75% { background-color: #ef444433; }
-  50% { background-color: #ef444466; }
+  25%, 75% { background-color: color-mix(in srgb, var(--error) 15%, transparent); }
+  50% { background-color: color-mix(in srgb, var(--error) 20%, transparent); }
 }
 
 @keyframes flash-amber {
   0%, 100% { background-color: transparent; }
-  50% { background-color: #f59e0b33; }
+  50% { background-color: color-mix(in srgb, var(--warning) 15%, transparent); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
 }
 
 .flash-correct { animation: flash-green 0.5s ease; }
-.flash-wrong   { animation: flash-red 0.6s ease; }
+.flash-wrong   { animation: flash-red 0.6s ease, shake 0.3s ease; }
 .flash-close   { animation: flash-amber 0.5s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-card-inner { transition: none; }
+  .flash-correct, .flash-wrong, .flash-close { animation: none; }
+}

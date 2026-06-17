@@ -1,26 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
-import ScoreBar from '../components/ScoreBar.jsx'
-import SessionTimer from '../components/SessionTimer.jsx'
+import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { getRegion } from '../utils/regionSettings.js'
 
 export default function CitiesQuiz() {
-  const location = useLocation()
   const navigate = useNavigate()
-  const state = location.state || {}
-  const region = state.region || 'All'
+  const region = getRegion()
 
   const [queue, setQueue] = useState([])
   const [total, setTotal] = useState(0)
   const [current, setCurrent] = useState(null)
+  const inputRef = useRef()
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState(null)
   const [flashState, setFlashState] = useState(null)
@@ -32,7 +31,6 @@ export default function CitiesQuiz() {
   const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'cities', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
-  // Session timer
   const sessionExpiredRef = useRef(false)
   const sessionTimer = useCountdownTimer({
     seconds: 60,
@@ -44,7 +42,6 @@ export default function CitiesQuiz() {
     },
   })
 
-  // Per-question timer
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
   useEffect(() => { currentRef.current = current }, [current])
@@ -93,7 +90,6 @@ export default function CitiesQuiz() {
     })
   }, [region])
 
-  // Per-question timer on current change
   useEffect(() => {
     const gp = gpRef.current
     if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
@@ -122,17 +118,25 @@ export default function CitiesQuiz() {
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
     const result = await submitAnswer(current.country.isoA2, answer)
-    setFlashState(result.result === 'CORRECT' ? 'correct' : result.result === 'CLOSE' ? 'close' : 'wrong')
-    setFeedback(result)
     if (result.result === 'CORRECT') {
+      setFlashState('correct')
+      setFeedback(result)
       questionTimer.stop()
       recordResult(current.country.isoA2, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1500)
+      setTimeout(advance, 700)
+    } else if (result.result === 'CLOSE') {
+      setFlashState('close')
+      setFeedback(result)
+    } else {
+      setAnswer('')
+      setFlashState('wrong')
+      setFeedback(null)
+      setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -141,20 +145,12 @@ export default function CitiesQuiz() {
   const qIndex = total - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{total}</span>
-        )}
-      </header>
+    <div className="min-h-screen bg-base flex flex-col">
+      <QuizHeader modeName="Major Cities" region={region} score={score} sessionTimer={sessionTimer} gp={gp} qIndex={qIndex} total={total} />
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard
@@ -162,16 +158,16 @@ export default function CitiesQuiz() {
           autoFlip={flipped}
           front={
             <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">Which country is this city in?</p>
-              <p className="text-4xl font-bold text-gray-800">{current.cityName}</p>
+              <p className="text-xs text-muted uppercase tracking-widest">Which country is this city in?</p>
+              <p className="text-4xl font-bold text-primary tracking-tight">{current.cityName}</p>
             </div>
           }
           back={
             <div className="text-center">
-              <p className="text-sm text-gray-500 mb-1">{current.cityName} is in</p>
-              <p className="text-2xl font-bold text-purple-600">{current.country.nameCommon}</p>
+              <p className="text-sm text-muted mb-1">{current.cityName} is in</p>
+              <p className="text-2xl font-bold text-primary tracking-tight">{current.country.nameCommon}</p>
               {current.country.flagPngUrl && (
-                <div style={{ width: 90, height: 60 }} className="mx-auto mt-2 rounded overflow-hidden border border-gray-200">
+                <div style={{ width: 90, height: 60 }} className="mx-auto mt-2 rounded-lg overflow-hidden border border-border-col">
                   <img src={current.country.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
               )}
@@ -180,12 +176,15 @@ export default function CitiesQuiz() {
         />
 
         <AnswerInput
+          ref={inputRef}
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
           onSkip={() => { questionTimer.stop(); recordResult(current.country.isoA2, 'SKIP', null); advance() }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type the country name…"
+          flash={flashState}
+          focusKey={qIndex}
         />
 
         <FeedbackBanner
@@ -194,10 +193,10 @@ export default function CitiesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 1200) }
+            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
             else { recordResult(current.country.isoA2, 'SKIP', null); advance() }
           }}
-          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer('') }}
+          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
       </main>
     </div>

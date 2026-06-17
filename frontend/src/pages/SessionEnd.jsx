@@ -1,11 +1,15 @@
 import { useLocation, useNavigate } from 'react-router-dom'
+import { Trophy } from 'lucide-react'
 
 const MODE_NAMES = {
-  flags: 'Flag Recognition',
-  map: 'Map Location',
+  flags: 'Flag Finder',
+  map: 'World Map',
   capitals: 'Capital City',
   cities: 'Major Cities',
   shapes: 'Country Shape',
+  currency: 'Currency',
+  language: 'Language',
+  borders: 'Borders',
 }
 
 export default function SessionEnd() {
@@ -17,53 +21,75 @@ export default function SessionEnd() {
   const total = score.correct + score.wrong + score.skipped
   const accuracy = total > 0 ? Math.round((score.correct / total) * 100) : 0
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">Session Complete!</h1>
-        <p className="text-gray-500 text-sm mb-6">{MODE_NAMES[mode] || mode} · {region}</p>
+  // SVG radial progress ring
+  const R = 54
+  const circumference = 2 * Math.PI * R
+  const dashOffset = circumference * (1 - accuracy / 100)
 
+  return (
+    <div className="min-h-screen bg-base flex flex-col">
+      {/* Zone 1 — Score hero (always dark) */}
+      <div className="bg-[#0F1829] flex flex-col items-center justify-center py-12 px-4 gap-3">
+        <div className="relative w-32 h-32">
+          <svg width="128" height="128" viewBox="0 0 128 128" className="-rotate-90">
+            <circle cx="64" cy="64" r={R} fill="none" stroke="#1E2E47" strokeWidth="8" />
+            <circle
+              cx="64" cy="64" r={R}
+              fill="none"
+              stroke="#4F70FF"
+              strokeWidth="8"
+              strokeDasharray={circumference}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-4xl font-extrabold text-white font-sans tracking-tight">{accuracy}%</span>
+          </div>
+        </div>
+        <p className="text-white font-bold text-xl tracking-tight">Session Complete</p>
+        <p className="text-slate-400 text-sm">{MODE_NAMES[mode] || mode} · {region}</p>
+      </div>
+
+      {/* Zone 2 — Breakdown */}
+      <div className="bg-base px-4 py-6 flex flex-col items-center gap-4">
         {isNewBest && (
-          <div className="mb-4 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-lg px-4 py-2 font-semibold">
-            🏆 New Personal Best!
+          <div className="flex items-center gap-2 bg-warning/10 border border-warning rounded-lg px-4 py-2 w-full max-w-sm">
+            <Trophy size={16} className="text-warning" strokeWidth={1.5} />
+            <span className="text-warning font-semibold text-sm">New Personal Best!</span>
           </div>
         )}
 
-        <table className="w-full text-sm mb-6">
-          <tbody>
-            <tr className="border-b">
-              <td className="py-2 text-left text-gray-500">Correct</td>
-              <td className="py-2 text-right font-semibold text-green-600">{score.correct}</td>
-            </tr>
-            <tr className="border-b">
-              <td className="py-2 text-left text-gray-500">Wrong</td>
-              <td className="py-2 text-right font-semibold text-red-500">{score.wrong}</td>
-            </tr>
-            <tr className="border-b">
-              <td className="py-2 text-left text-gray-500">Skipped</td>
-              <td className="py-2 text-right font-semibold text-gray-400">{score.skipped}</td>
-            </tr>
-            <tr>
-              <td className="py-2 text-left text-gray-500">Accuracy</td>
-              <td className="py-2 text-right font-bold text-blue-600">{accuracy}%</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={() => navigate(`/quiz/${mode}`, { state: { region, timer: 30 } })}
-            className="py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600"
-          >
-            Play Again
-          </button>
-          <button
-            onClick={() => navigate('/')}
-            className="py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200"
-          >
-            Change Mode
-          </button>
+        <div className="flex gap-3 justify-center">
+          <span className="bg-surface border border-border-col rounded-lg px-4 py-3 text-center min-w-[72px]">
+            <p className="text-2xl font-bold text-success">{score.correct}</p>
+            <p className="text-xs text-muted mt-0.5">Correct</p>
+          </span>
+          <span className="bg-surface border border-border-col rounded-lg px-4 py-3 text-center min-w-[72px]">
+            <p className="text-2xl font-bold text-error">{score.wrong}</p>
+            <p className="text-xs text-muted mt-0.5">Wrong</p>
+          </span>
+          <span className="bg-surface border border-border-col rounded-lg px-4 py-3 text-center min-w-[72px]">
+            <p className="text-2xl font-bold text-muted">{score.skipped}</p>
+            <p className="text-xs text-muted mt-0.5">Skipped</p>
+          </span>
         </div>
+      </div>
+
+      {/* Zone 3 — Actions */}
+      <div className="bg-base px-4 pb-8 flex flex-col gap-3 max-w-sm mx-auto w-full">
+        <button
+          onClick={() => navigate(`/quiz/${mode}`, { state: { region, timer: 30 } })}
+          className="w-full py-3 bg-accent text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
+        >
+          Play Again
+        </button>
+        <button
+          onClick={() => navigate('/')}
+          className="w-full py-3 bg-surface border border-border-col text-primary rounded-lg font-semibold hover:bg-subtle transition-colors"
+        >
+          All Quizzes
+        </button>
       </div>
     </div>
   )

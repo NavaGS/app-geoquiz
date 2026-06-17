@@ -1,26 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
-import ScoreBar from '../components/ScoreBar.jsx'
-import SessionTimer from '../components/SessionTimer.jsx'
+import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { getRegion } from '../utils/regionSettings.js'
 
 export default function LanguageQuiz() {
-  const location = useLocation()
   const navigate = useNavigate()
-  const state = location.state || {}
-  const region = state.region || 'All'
+  const region = getRegion()
 
   const [queue, setQueue] = useState([])
   const [total, setTotal] = useState(0)
   const [current, setCurrent] = useState(null)
+  const inputRef = useRef()
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState(null)
   const [flashState, setFlashState] = useState(null)
@@ -111,19 +110,26 @@ export default function LanguageQuiz() {
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
     const res = await api.submitLanguageAnswer(current.isoA2, answer)
-    setFlashState(res.result === 'CORRECT' ? 'correct' : res.result === 'CLOSE' ? 'close' : 'wrong')
-    // Map canonicalAnswer → canonicalName for FeedbackBanner
     const fb = { result: res.result, canonicalName: res.canonicalAnswer, allLanguages: res.allLanguages }
-    setFeedback(fb)
     if (res.result === 'CORRECT') {
+      setFlashState('correct')
+      setFeedback(fb)
       questionTimer.stop()
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
       setFlipped(true)
-      setTimeout(advance, 1500)
+      setTimeout(advance, 700)
+    } else if (res.result === 'CLOSE') {
+      setFlashState('close')
+      setFeedback(fb)
+    } else {
+      setAnswer('')
+      setFlashState('wrong')
+      setFeedback(null)
+      setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -132,40 +138,34 @@ export default function LanguageQuiz() {
   const qIndex = total - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{total}</span>
-        )}
-      </header>
+    <div className="min-h-screen bg-base flex flex-col">
+      <QuizHeader modeName="Language" region={region} score={score} sessionTimer={sessionTimer} gp={gp} qIndex={qIndex} total={total} />
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard
           flashState={flashState}
           autoFlip={flipped}
           front={
-            <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">What language(s) do they speak in {current.nameCommon}?</p>
-              {current.flagPngUrl && (
-                <div style={{ width: 240, height: 160 }} className="rounded shadow overflow-hidden border border-gray-200">
-                  <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                </div>
-              )}
-              <p className="text-2xl font-bold text-gray-800">{current.nameCommon}</p>
+            <div className="flex flex-col items-center justify-center gap-2 text-center h-full">
+              <p className="text-xs text-muted uppercase tracking-widest">What language(s) do they speak here?</p>
+              <div className="flex items-center gap-3">
+                {current.flagPngUrl && (
+                  <div style={{ width: 72, height: 48, flexShrink: 0 }} className="rounded overflow-hidden border border-border-col shadow-sm">
+                    <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  </div>
+                )}
+                <p className="text-2xl font-bold text-primary tracking-tight text-left">{current.nameCommon}</p>
+              </div>
             </div>
           }
           back={
             <div className="text-center">
-              <p className="text-sm text-gray-500 mb-1">Languages spoken in {current.nameCommon}:</p>
-              <p className="text-xl font-semibold text-green-600">
+              <p className="text-sm text-muted mb-1">Languages spoken in {current.nameCommon}:</p>
+              <p className="text-xl font-semibold text-primary">
                 {current.languages && current.languages.length > 0
                   ? current.languages.join(', ')
                   : '—'}
@@ -175,12 +175,15 @@ export default function LanguageQuiz() {
         />
 
         <AnswerInput
+          ref={inputRef}
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
           onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type a language…"
+          flash={flashState}
+          focusKey={qIndex}
         />
 
         <FeedbackBanner
@@ -189,10 +192,10 @@ export default function LanguageQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 1200) }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
             else { recordResult(current.isoA2, 'SKIP', null); advance() }
           }}
-          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer('') }}
+          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
       </main>
     </div>

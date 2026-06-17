@@ -1,25 +1,29 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
-import ScoreBar from '../components/ScoreBar.jsx'
-import SessionTimer from '../components/SessionTimer.jsx'
+import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { getRegion } from '../utils/regionSettings.js'
+import { useTheme } from '../contexts/ThemeContext.jsx'
 
 function ShapeSvg({ geojsonStr }) {
+  const { theme } = useTheme()
   const rotationRef = useRef((Math.random() * 30 - 15).toFixed(1))
 
-  if (!geojsonStr) return <div className="text-gray-400 text-sm">No shape data</div>
+  const shapeFill = theme === 'dark' ? '#4F70FF' : '#1B3FE4'
+
+  if (!geojsonStr) return <div className="text-muted text-sm">No shape data</div>
 
   let geojson
-  try { geojson = JSON.parse(geojsonStr) } catch { return <div className="text-gray-400 text-sm">Invalid shape</div> }
+  try { geojson = JSON.parse(geojsonStr) } catch { return <div className="text-muted text-sm">Invalid shape</div> }
 
   const W = 280, H = 220, PAD = 16
   const feature = { type: 'Feature', geometry: geojson, properties: {} }
@@ -32,29 +36,28 @@ function ShapeSvg({ geojsonStr }) {
       .fitExtent([[PAD, PAD], [W - PAD, H - PAD]], feature)
     const pathGen = d3.geoPath().projection(projection)
     pathData = pathGen(feature)
-    if (!pathData || pathData.length < 10) return <div className="text-gray-400 text-sm">Shape unavailable</div>
+    if (!pathData || pathData.length < 10) return <div className="text-muted text-sm">Shape unavailable</div>
   } catch {
-    return <div className="text-gray-400 text-sm">Shape unavailable</div>
+    return <div className="text-muted text-sm">Shape unavailable</div>
   }
 
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
+    <div className="w-full flex items-center justify-center" style={{ height: 160, overflow: 'hidden' }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full max-h-48"
-        style={{ overflow: 'visible', transform: `rotate(${rotationRef.current}deg)`, transformOrigin: 'center' }}
+        style={{ width: '100%', height: '100%', transform: `rotate(${rotationRef.current}deg)`, transformOrigin: 'center' }}
       >
         <defs>
-          <filter id="shadow">
+          <filter id="shapeShadow">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15" />
           </filter>
         </defs>
         <path
           d={pathData}
-          fill="#0f766e"
+          fill={shapeFill}
           stroke="white"
           strokeWidth={1}
-          filter="url(#shadow)"
+          filter="url(#shapeShadow)"
         />
       </svg>
     </div>
@@ -62,16 +65,15 @@ function ShapeSvg({ geojsonStr }) {
 }
 
 export default function ShapesQuiz() {
-  const location = useLocation()
   const navigate = useNavigate()
-  const state = location.state || {}
-  const region = state.region || 'All'
+  const region = getRegion()
 
   const [countries, setCountries] = useState([])
   const [queue, setQueue] = useState([])
   const [queueSize, setQueueSize] = useState(0)
   const [current, setCurrent] = useState(null)
   const [shapeData, setShapeData] = useState(null)
+  const inputRef = useRef()
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState(null)
   const [flashState, setFlashState] = useState(null)
@@ -83,7 +85,6 @@ export default function ShapesQuiz() {
   const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'shapes', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
-  // Session timer
   const sessionExpiredRef = useRef(false)
   const sessionTimer = useCountdownTimer({
     seconds: 60,
@@ -95,7 +96,6 @@ export default function ShapesQuiz() {
     },
   })
 
-  // Per-question timer
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
   useEffect(() => { currentRef.current = current }, [current])
@@ -142,7 +142,6 @@ export default function ShapesQuiz() {
     api.getShape(current.isoA2).then(d => setShapeData(d)).catch(() => setShapeData(null))
   }, [current])
 
-  // Per-question timer on current change
   useEffect(() => {
     const gp = gpRef.current
     if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
@@ -171,17 +170,25 @@ export default function ShapesQuiz() {
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
     const result = await submitAnswer(current.isoA2, answer)
-    setFlashState(result.result === 'CORRECT' ? 'correct' : result.result === 'CLOSE' ? 'close' : 'wrong')
-    setFeedback(result)
     if (result.result === 'CORRECT') {
+      setFlashState('correct')
+      setFeedback(result)
       questionTimer.stop()
       recordResult(current.isoA2, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1500)
+      setTimeout(advance, 700)
+    } else if (result.result === 'CLOSE') {
+      setFlashState('close')
+      setFeedback(result)
+    } else {
+      setAnswer('')
+      setFlashState('wrong')
+      setFeedback(null)
+      setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading…</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
   const gp = gpRef.current || { mode: 'none' }
@@ -190,45 +197,40 @@ export default function ShapesQuiz() {
   const qIndex = queueSize - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{queueSize}</span>
-        )}
-      </header>
+    <div className="min-h-screen bg-base flex flex-col">
+      <QuizHeader modeName="Country Shape" region={region} score={score} sessionTimer={sessionTimer} gp={gp} qIndex={qIndex} total={queueSize} />
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard
           flashState={flashState}
           autoFlip={flipped}
           front={
-            <div className="w-full flex flex-col items-center gap-2">
-              <p className="text-sm text-gray-500 uppercase tracking-wide">Which country is this shape?</p>
+            <div className="w-full flex flex-col items-center justify-center gap-2 h-full">
+              <p className="text-xs text-muted uppercase tracking-widest">Which country is this shape?</p>
               <ShapeSvg geojsonStr={shapeData?.geojson} />
             </div>
           }
           back={
             <div className="text-center">
-              <p className="text-2xl font-bold text-teal-700">{current.nameCommon}</p>
-              <p className="text-sm text-gray-500 mt-1">{current.region}</p>
+              <p className="text-2xl font-bold text-primary tracking-tight">{current.nameCommon}</p>
+              <p className="text-sm text-muted mt-1">{current.region}</p>
             </div>
           }
         />
 
         <AnswerInput
+          ref={inputRef}
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
           onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
+          flash={flashState}
+          focusKey={qIndex}
         />
 
         <FeedbackBanner
@@ -237,10 +239,10 @@ export default function ShapesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 1200) }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
             else { recordResult(current.isoA2, 'SKIP', null); advance() }
           }}
-          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer('') }}
+          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
       </main>
     </div>

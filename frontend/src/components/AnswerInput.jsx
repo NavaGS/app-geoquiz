@@ -1,19 +1,31 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 
-export default function AnswerInput({ value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type country name…' }) {
+const AnswerInput = forwardRef(function AnswerInput(
+  { value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type a country…', flash, focusKey },
+  ref
+) {
   const inputRef = useRef()
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }))
 
   useEffect(() => {
     inputRef.current?.focus()
-  }, [])
+  }, [focusKey])
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') { e.preventDefault(); onSubmit?.() }
     if (e.key === 'Tab')   { e.preventDefault(); onSkip?.() }
   }
 
+  const borderClass =
+    flash === 'correct' ? 'border-success ring-2 ring-success/30' :
+    flash === 'wrong'   ? 'border-error ring-2 ring-error/30' :
+    'border-border-col focus:border-accent focus:ring-2'
+
   return (
-    <div className="flex gap-2 w-full">
+    <div className="flex flex-col gap-2 w-full">
       <input
         ref={inputRef}
         type="text"
@@ -22,22 +34,27 @@ export default function AnswerInput({ value, onChange, onSubmit, onSkip, disable
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
-        className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+        className={`w-full h-11 bg-subtle border rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none disabled:opacity-50 transition-colors ${borderClass}`}
+        style={{ '--tw-ring-color': 'var(--accent-glow)' }}
       />
-      <button
-        onClick={onSubmit}
-        disabled={disabled}
-        className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50"
-      >
-        Submit
-      </button>
-      <button
-        onClick={onSkip}
-        disabled={disabled}
-        className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 text-sm"
-      >
-        Skip
-      </button>
+      <div className="flex justify-end gap-4">
+        <button
+          onClick={onSubmit}
+          disabled={disabled}
+          className="text-accent text-sm font-medium disabled:opacity-50 hover:text-accent-hover"
+        >
+          Enter
+        </button>
+        <button
+          onClick={onSkip}
+          disabled={disabled}
+          className="text-muted text-sm disabled:opacity-50 hover:text-secondary"
+        >
+          Skip
+        </button>
+      </div>
     </div>
   )
-}
+})
+
+export default AnswerInput

@@ -3,20 +3,18 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import FlipCard from './FlipCard.jsx'
 import AnswerInput from './AnswerInput.jsx'
 import FeedbackBanner from './FeedbackBanner.jsx'
-import ScoreBar from './ScoreBar.jsx'
-import SessionTimer from './SessionTimer.jsx'
+import QuizHeader from './QuizHeader.jsx'
 import QuestionTimer from './QuestionTimer.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
+import { getRegion } from '../utils/regionSettings.js'
 
-export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn }) {
-  const location = useLocation()
+export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn, modeName, modeLabel }) {
   const navigate = useNavigate()
-  const state = location.state || {}
-  const region = state.region || 'All'
+  const region = getRegion()
 
   const [countries, setCountries] = useState([])
   const [queue, setQueue] = useState([])
@@ -29,6 +27,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  const inputRef = useRef()
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
   const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode, region })
@@ -56,7 +55,6 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     onExpire: useCallback(() => {
       const c = currentRef.current
       if (!c) return
-      const gp = gpRef.current
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
       recordResult(iso, 'SKIP', null)
       advanceRef.current?.()
@@ -126,13 +124,21 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     if (!answer.trim() || !current || feedback) return
     const question = getQuestion(current)
     const result = await submitAnswer(question.iso, answer)
-    setFlashState(result.result === 'CORRECT' ? 'correct' : result.result === 'CLOSE' ? 'close' : 'wrong')
-    setFeedback(result)
     if (result.result === 'CORRECT') {
+      setFlashState('correct')
+      setFeedback(result)
       questionTimer.stop()
       recordResult(question.iso, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1500)
+      setTimeout(advance, 700)
+    } else if (result.result === 'CLOSE') {
+      setFlashState('close')
+      setFeedback(result)
+    } else {
+      setAnswer('')
+      setFlashState('wrong')
+      setFeedback(null)
+      setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }, [answer, current, feedback, getQuestion, submitAnswer, recordResult, advance, questionTimer])
 
@@ -142,7 +148,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     if (feedback.result === 'CLOSE') {
       recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 1200)
+      setTimeout(advance, 700)
     } else {
       recordResult(getQuestion(current).iso, 'SKIP', null)
       advance()
@@ -153,6 +159,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     setFeedback(null)
     setFlashState(null)
     setAnswer('')
+    inputRef.current?.focus()
   }
 
   function handleSkip() {
@@ -173,13 +180,13 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   }, [])
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading countries…</div>
-  if (error)   return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>
+  if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading countries…</div>
+  if (error)   return <div className="min-h-screen bg-base flex items-center justify-center text-error">{error}</div>
   if (!current) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-4">
-      <p className="text-xl font-semibold text-gray-700">No countries found</p>
-      <p className="text-gray-500">The database may still be seeding. Try refreshing in a moment.</p>
-      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Retry</button>
+    <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4 text-center px-4">
+      <p className="text-xl font-semibold text-primary">No countries found</p>
+      <p className="text-secondary">The database may still be seeding. Try refreshing in a moment.</p>
+      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-accent text-white rounded-lg hover:opacity-90">Retry</button>
     </div>
   )
 
@@ -189,20 +196,20 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   const qIndex = queueSize - queue.length + 1
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800">← Home</button>
-        <ScoreBar {...score} />
-        {showSessionTimer ? (
-          <SessionTimer remaining={sessionTimer.remaining} total={gp.countdownSecs} />
-        ) : (
-          <span className="text-sm text-gray-400">{qIndex}/{queueSize}</span>
-        )}
-      </header>
+    <div className="min-h-screen bg-base flex flex-col">
+      <QuizHeader
+        modeName={modeName || mode}
+        region={region}
+        score={score}
+        sessionTimer={sessionTimer}
+        gp={gp}
+        qIndex={qIndex}
+        total={queueSize}
+      />
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
         {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         )}
 
         <FlipCard
@@ -213,11 +220,14 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
         />
 
         <AnswerInput
+          ref={inputRef}
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
           onSkip={handleSkip}
-          disabled={!!feedback && feedback.result !== 'WRONG' && feedback.result !== 'CLOSE'}
+          disabled={!!feedback && feedback.result === 'CORRECT'}
+          flash={flashState}
+          focusKey={qIndex}
         />
 
         <FeedbackBanner
