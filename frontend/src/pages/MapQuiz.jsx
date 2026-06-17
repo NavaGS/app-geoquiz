@@ -423,7 +423,7 @@ export default function MapQuiz() {
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
       <QuizHeader
-        modeName="Map Location"
+        modeName="World Map"
         region={region}
         score={score}
         sessionTimer={sessionTimer}

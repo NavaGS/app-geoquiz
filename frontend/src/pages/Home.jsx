@@ -3,8 +3,8 @@ import { Flag, Globe, Landmark, Building2, Hexagon, Coins, MessageSquare, Compas
 import { getRegion } from '../utils/regionSettings.js'
 
 const MODES = [
-  { id: 'flags',    path: '/quiz/flags',    name: 'Flag Recognition', description: 'Identify countries by their flag',           Icon: Flag,          accent: '#1B3FE4' },
-  { id: 'map',      path: '/quiz/map',      name: 'Map Location',     description: 'Click the highlighted country on the map',   Icon: Globe,         accent: '#0D9488' },
+  { id: 'flags',    path: '/quiz/flags',    name: 'Flag Finder', description: 'Identify countries by their flag',           Icon: Flag,          accent: '#1B3FE4' },
+  { id: 'map',      path: '/quiz/map',      name: 'World Map',     description: 'Click the highlighted country on the map',   Icon: Globe,         accent: '#0D9488' },
   { id: 'capitals', path: '/quiz/capitals', name: 'Capital City',     description: 'Name the capital city',                      Icon: Landmark,      accent: '#EA580C' },
   { id: 'cities',   path: '/quiz/cities',   name: 'Major Cities',     description: 'Name the country from its city',             Icon: Building2,     accent: '#7C3AED' },
   { id: 'shapes',   path: '/quiz/shapes',   name: 'Country Shape',    description: 'Identify a country by its outline',          Icon: Hexagon,       accent: '#0F766E' },

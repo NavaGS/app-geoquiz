@@ -4,7 +4,7 @@ export default function FlagsQuiz() {
   return (
     <FlipQuiz
       mode="flags"
-      modeName="Flag Recognition"
+      modeName="Flag Finder"
       accentColor="#1B3FE4"
       filterFn={c => !!c.flagPngUrl}
       getQuestion={c => ({ iso: c.isoA2, question: c.nameCommon })}

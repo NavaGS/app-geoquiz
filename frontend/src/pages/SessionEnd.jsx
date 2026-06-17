@@ -2,8 +2,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Trophy } from 'lucide-react'
 
 const MODE_NAMES = {
-  flags: 'Flag Recognition',
-  map: 'Map Location',
+  flags: 'Flag Finder',
+  map: 'World Map',
   capitals: 'Capital City',
   cities: 'Major Cities',
   shapes: 'Country Shape',
