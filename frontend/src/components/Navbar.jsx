@@ -4,19 +4,27 @@ import { useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext.jsx'
 import GlobalSettingsModal from './GlobalSettingsModal.jsx'
 
-const QUIZ_PATHS = ['/quiz/', '/session-end']
+const QUIZ_PATHS = ['/quiz/', '/session-end', '/game/']
 
-function NavIconBtn({ icon, label, to, onClick }) {
+function NavIconBtn({ icon, label, to, onClick, disabled, disabledLabel }) {
+  const tooltip = disabled && disabledLabel ? disabledLabel : label
   const inner = (
-    <span className="p-2 rounded-lg text-muted hover:text-primary hover:bg-subtle transition-colors flex items-center justify-center">
+    <span className={`p-2 rounded-lg flex items-center justify-center transition-colors ${
+      disabled
+        ? 'text-muted opacity-30 cursor-not-allowed'
+        : 'text-muted hover:text-primary hover:bg-subtle'
+    }`}>
       {icon}
     </span>
   )
   return (
     <div className="relative group">
-      {to ? <Link to={to}>{inner}</Link> : <button onClick={onClick}>{inner}</button>}
-      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 bg-[#0F1829] text-white text-[11px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity duration-150">
-        {label}
+      {to && !disabled
+        ? <Link to={to}>{inner}</Link>
+        : <button onClick={disabled ? undefined : onClick} disabled={disabled}>{inner}</button>
+      }
+      <div className="absolute top-full right-0 mt-1.5 px-2 py-1 bg-[#0F1829] text-white text-[11px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 transition-opacity duration-150 max-w-[220px] text-center leading-snug" style={{ whiteSpace: tooltip.length > 20 ? 'normal' : 'nowrap' }}>
+        {tooltip}
       </div>
     </div>
   )
@@ -27,6 +35,7 @@ export default function Navbar() {
   const { theme, toggle } = useTheme()
   const [showSettings, setShowSettings] = useState(false)
   const isQuiz = QUIZ_PATHS.some(p => location.pathname.startsWith(p))
+  const isMultiplayer = location.pathname.startsWith('/multiplayer') || location.pathname.startsWith('/room')
 
   if (isQuiz) return null
 
@@ -42,7 +51,13 @@ export default function Navbar() {
 
         {/* Right: settings + theme */}
         <div className="ml-auto flex items-center">
-          <NavIconBtn icon={<Settings2 size={18} strokeWidth={1.5} />} label="Quiz Settings" onClick={() => setShowSettings(true)} />
+          <NavIconBtn
+            icon={<Settings2 size={18} strokeWidth={1.5} />}
+            label="Quiz Settings"
+            onClick={() => setShowSettings(true)}
+            disabled={isMultiplayer}
+            disabledLabel="Use 'Game' settings in Multiplayer mode"
+          />
           <NavIconBtn
             icon={theme === 'dark' ? <Sun size={18} strokeWidth={1.5} /> : <Moon size={18} strokeWidth={1.5} />}
             label={theme === 'dark' ? 'Light mode' : 'Dark mode'}

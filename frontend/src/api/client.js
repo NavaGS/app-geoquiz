@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:8080'
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -36,6 +36,15 @@ export const api = {
   logEvent: (body) => request('/api/events/quiz', { method: 'POST', body: JSON.stringify(body) }),
   getStats: () => request('/api/monitoring/stats'),
   triggerRefresh: () => request('/admin/refresh-data', { method: 'POST' }),
+
+  // Multiplayer
+  createRoom: (body) => request('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
+  joinRoomRest: (code, displayName) =>
+    request(`/api/rooms/${code}/join`, { method: 'POST', body: JSON.stringify({ displayName }) }),
+  getRoom: (code) => request(`/api/rooms/${code}`),
+  updateRoomSettings: (code, body) =>
+    request(`/api/rooms/${code}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
 }
 
+export const BASE_WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080'
 export const SSE_URL = `${BASE_URL}/api/monitoring/live`

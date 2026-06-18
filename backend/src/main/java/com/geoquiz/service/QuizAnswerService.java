@@ -9,6 +9,7 @@ import org.apache.commons.text.similarity.JaroWinklerSimilarity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ public class QuizAnswerService {
         this.countryRepository = countryRepository;
     }
 
+    @Transactional(readOnly = true)
     public AnswerResponse evaluate(AnswerRequest request) {
         Country country = countryRepository.findByIsoA2IgnoreCase(request.getCountryIso())
                 .or(() -> countryRepository.findByIsoA3IgnoreCase(request.getCountryIso()))
