@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext.jsx'
 import GlobalSettingsModal from './GlobalSettingsModal.jsx'
 
-const QUIZ_PATHS = ['/quiz/', '/session-end']
+const QUIZ_PATHS = ['/quiz/', '/session-end', '/game/']
 
 function NavIconBtn({ icon, label, to, onClick }) {
   const inner = (
