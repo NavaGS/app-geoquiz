@@ -12,7 +12,7 @@ const MODES = [
 
 const REGIONS = ['All', 'Africa', 'Americas', 'Asia', 'Europe', 'Oceania']
 const QUESTION_COUNTS = [5, 10, 15, 20]
-const TIME_LIMITS = [5, 10, 15, 20]
+const TIME_LIMITS = [5, 10, 15]
 
 export default function CreateRoom() {
   const navigate = useNavigate()
@@ -27,6 +27,7 @@ export default function CreateRoom() {
   const [difficultyMode, setDifficultyMode] = useState(savedDiff.mode)
   const [maxQuestions, setMaxQuestions] = useState(15)
   const [questionDurationSeconds, setQuestionDurationSeconds] = useState(20)
+  const [responseAttempts, setResponseAttempts] = useState('unlimited')
 
   async function handleCreate(e) {
     e.preventDefault()
@@ -42,6 +43,7 @@ export default function CreateRoom() {
         difficultyMode,
         maxQuestions,
         questionDurationSeconds,
+        responseAttempts,
       })
       sessionStorage.setItem(`room_${roomCode}`, JSON.stringify({ playerId, hostToken, displayName: name.trim(), isHost: true }))
       navigate(`/room/${roomCode}`)
@@ -195,6 +197,31 @@ export default function CreateRoom() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Response attempts</label>
+          <div className="flex gap-2">
+            {[['unlimited', 'Unlimited'], ['single', 'Single']].map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setResponseAttempts(val)}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                  responseAttempts === val
+                    ? 'bg-accent text-white border-accent'
+                    : 'bg-surface border-border-col text-secondary hover:text-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted mt-1.5">
+            {responseAttempts === 'unlimited'
+              ? 'Players can keep trying until the timer runs out'
+              : 'Players get one submission per question'}
+          </p>
         </div>
 
         {error && <p className="text-sm text-error">{error}</p>}

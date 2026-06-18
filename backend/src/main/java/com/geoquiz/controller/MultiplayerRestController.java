@@ -28,7 +28,7 @@ public class MultiplayerRestController {
         RoomPlayer host = roomService.createRoom(
                 req.getQuizMode(), req.getRegion(), req.getHostDisplayName(),
                 req.getDifficultyRating(), req.getDifficultyMode(),
-                req.getMaxQuestions(), req.getQuestionDurationSeconds());
+                req.getMaxQuestions(), req.getQuestionDurationSeconds(), req.getResponseAttempts());
         Room room = roomService.getActiveRoomById(host.getRoomId());
         return ResponseEntity.ok(new CreateRoomResponse(
                 room.getRoomCode(),
@@ -62,6 +62,7 @@ public class MultiplayerRestController {
                 room.getDifficultyMode(),
                 room.getMaxQuestions(),
                 room.getQuestionDurationSeconds(),
+                room.getResponseAttempts(),
                 playerInfos
         ));
     }

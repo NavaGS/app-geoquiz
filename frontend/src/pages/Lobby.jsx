@@ -14,7 +14,7 @@ const MODE_META = {
 export default function Lobby() {
   const { code } = useParams()
   const navigate = useNavigate()
-  const { players, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, isHost, phase, initRoom, announceJoin, announceLeave, startGame, hostToken, playerId, connected } = useRoom()
+  const { players, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts, isHost, phase, initRoom, announceJoin, announceLeave, startGame, hostToken, playerId, connected } = useRoom()
   const [copied, setCopied] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState(null)
@@ -38,6 +38,7 @@ export default function Lobby() {
         difficultyMode: roomData.difficultyMode ?? 'inclusive',
         maxQuestions: roomData.maxQuestions ?? 15,
         questionDurationSeconds: roomData.questionDurationSeconds ?? 20,
+        responseAttempts: roomData.responseAttempts ?? 'unlimited',
       })
 
       // Seed initial player list from REST
@@ -112,7 +113,7 @@ export default function Lobby() {
           <span className="text-xs text-muted">{region}</span>
           {difficultyRating && (
             <span className="text-xs text-muted">
-              {DIFFICULTY_LABELS[difficultyRating - 1]}{difficultyMode === 'exact' ? ' only' : ' & below'} · {maxQuestions}Q · {questionDurationSeconds}s
+              {DIFFICULTY_LABELS[difficultyRating - 1]}{difficultyMode === 'exact' ? ' only' : ' & below'} · {maxQuestions}Q · {questionDurationSeconds}s · {responseAttempts === 'unlimited' ? '∞ attempts' : '1 attempt'}
             </span>
           )}
         </div>

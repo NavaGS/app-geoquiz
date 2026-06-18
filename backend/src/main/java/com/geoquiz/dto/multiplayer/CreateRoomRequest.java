@@ -8,6 +8,7 @@ public class CreateRoomRequest {
     private String difficultyMode = "inclusive";
     private int maxQuestions = 15;
     private int questionDurationSeconds = 20;
+    private String responseAttempts = "unlimited";
 
     public String getQuizMode() { return quizMode; }
     public void setQuizMode(String quizMode) { this.quizMode = quizMode; }
@@ -23,4 +24,6 @@ public class CreateRoomRequest {
     public void setMaxQuestions(int maxQuestions) { this.maxQuestions = maxQuestions; }
     public int getQuestionDurationSeconds() { return questionDurationSeconds; }
     public void setQuestionDurationSeconds(int s) { this.questionDurationSeconds = s; }
+    public String getResponseAttempts() { return responseAttempts; }
+    public void setResponseAttempts(String responseAttempts) { this.responseAttempts = responseAttempts; }
 }

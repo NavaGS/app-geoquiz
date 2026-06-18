@@ -11,6 +11,7 @@ const initialState = {
   difficultyMode: 'inclusive',
   maxQuestions: 15,
   questionDurationSeconds: 20,
+  responseAttempts: 'unlimited',
   players: [],
   playerId: null,
   displayName: null,
@@ -37,6 +38,10 @@ function reducer(state, action) {
     case 'QUESTION_STARTED':
       return { ...state, phase: 'QUESTION', question: action.payload, answerResult: null, correctAnswer: null }
     case 'ANSWER_RESULT':
+      // Unlimited mode: wrong answer keeps the input active so the player can retry
+      if (state.responseAttempts === 'unlimited' && action.payload.correct === false) {
+        return { ...state, answerResult: action.payload }
+      }
       return { ...state, phase: 'SUBMITTED', answerResult: action.payload }
     case 'QUESTION_ENDED':
       return { ...state, phase: 'RESULTS', correctAnswer: action.payload.correctAnswer, leaderboard: action.payload.leaderboard }
@@ -71,8 +76,8 @@ export function RoomProvider({ children }) {
     return () => subscriptionsRef.current.forEach(unsub => unsub?.())
   }, [])
 
-  const initRoom = useCallback(({ roomCode, playerId, displayName, isHost, hostToken, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds }) => {
-    dispatch({ type: 'INIT_ROOM', payload: { roomCode, playerId, displayName, isHost, hostToken, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds } })
+  const initRoom = useCallback(({ roomCode, playerId, displayName, isHost, hostToken, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts }) => {
+    dispatch({ type: 'INIT_ROOM', payload: { roomCode, playerId, displayName, isHost, hostToken, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts } })
     setupSubscriptions(roomCode, playerId)
   }, [setupSubscriptions])
 
@@ -88,9 +93,12 @@ export function RoomProvider({ children }) {
     publish('/app/game/start', { roomCode, hostToken })
   }, [publish])
 
-  const submitAnswer = useCallback((roomCode, playerId, questionIndex, answer) => {
+  const submitAnswer = useCallback((roomCode, playerId, questionIndex, answer, responseAttempts) => {
     publish('/app/game/answer', { roomCode, playerId, questionIndex, answer })
-    dispatch({ type: 'ANSWER_RESULT', payload: { correct: null, points: null, canonicalAnswer: null } })
+    // Single mode: optimistically lock the input immediately while waiting for server
+    if (responseAttempts === 'single') {
+      dispatch({ type: 'ANSWER_RESULT', payload: { correct: null, points: null, canonicalAnswer: null } })
+    }
   }, [publish])
 
   const updatePlayers = useCallback((players) => {

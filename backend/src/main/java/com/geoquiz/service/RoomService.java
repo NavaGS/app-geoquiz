@@ -35,7 +35,7 @@ public class RoomService {
     @Transactional
     public RoomPlayer createRoom(String quizMode, String region, String hostDisplayName,
                                  int difficultyRating, String difficultyMode, int maxQuestions,
-                                 int questionDurationSeconds) {
+                                 int questionDurationSeconds, String responseAttempts) {
         String code = generateUniqueCode();
 
         Room room = new Room();
@@ -46,6 +46,7 @@ public class RoomService {
         room.setDifficultyMode("exact".equals(difficultyMode) ? "exact" : "inclusive");
         room.setMaxQuestions(Math.max(1, Math.min(30, maxQuestions)));
         room.setQuestionDurationSeconds(Math.max(5, Math.min(60, questionDurationSeconds)));
+        room.setResponseAttempts("single".equals(responseAttempts) ? "single" : "unlimited");
         room.setStatus(RoomStatus.LOBBY);
         room = roomRepo.save(room);
 

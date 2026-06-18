@@ -43,6 +43,9 @@ public class Room {
     @Column(name = "question_duration_seconds")
     private int questionDurationSeconds = 20;
 
+    @Column(name = "response_attempts", length = 20)
+    private String responseAttempts = "unlimited";
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -67,5 +70,7 @@ public class Room {
     public void setMaxQuestions(int maxQuestions) { this.maxQuestions = maxQuestions; }
     public int getQuestionDurationSeconds() { return questionDurationSeconds; }
     public void setQuestionDurationSeconds(int s) { this.questionDurationSeconds = s; }
+    public String getResponseAttempts() { return responseAttempts; }
+    public void setResponseAttempts(String responseAttempts) { this.responseAttempts = responseAttempts; }
     public Instant getCreatedAt() { return createdAt; }
 }

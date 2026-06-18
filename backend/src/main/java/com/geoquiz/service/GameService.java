@@ -66,7 +66,8 @@ public class GameService {
         Collections.shuffle(pool);
         List<Country> questions = pool.subList(0, Math.min(room.getMaxQuestions(), pool.size()));
 
-        GameState state = new GameState(roomCode, room.getQuizMode(), new ArrayList<>(questions), room.getQuestionDurationSeconds());
+        GameState state = new GameState(roomCode, room.getQuizMode(), new ArrayList<>(questions),
+                room.getQuestionDurationSeconds(), room.getResponseAttempts());
         activeGames.put(roomCode, state);
 
         roomService.updateRoomStatus(roomCode, RoomStatus.IN_PROGRESS);
@@ -94,11 +95,12 @@ public class GameService {
             long deadline = state.questionStartTimeMs + (long) state.questionDurationSeconds * 1000;
             if (now > deadline) return;
 
+            // Block players who have already answered correctly this question
             if (state.answeredPlayers.contains(playerId)) return;
 
-            if (answerRepo.findByPlayerIdAndQuestionIndex(playerId, questionIndex).isPresent()) return;
-
-            state.answeredPlayers.add(playerId);
+            // For single-attempt mode, also block on any prior DB record
+            if ("single".equals(state.responseAttempts) &&
+                    answerRepo.findByPlayerIdAndQuestionIndex(playerId, questionIndex).isPresent()) return;
 
             Country country = state.currentQuestion();
             AnswerRequest req = new AnswerRequest();
@@ -116,15 +118,26 @@ public class GameService {
                 long remaining = Math.max(0, total - elapsed);
                 points = (int) (1000 + (remaining * 500.0 / total));
                 roomService.addScore(playerId, points);
-            }
+                state.answeredPlayers.add(playerId);
 
-            MultiplayerAnswer stored = new MultiplayerAnswer();
-            stored.setPlayerId(playerId);
-            stored.setQuestionIndex(questionIndex);
-            stored.setAnswerGiven(answer);
-            stored.setCorrect(correct);
-            stored.setResponseTimeMs(now - state.questionStartTimeMs);
-            answerRepo.save(stored);
+                MultiplayerAnswer stored = new MultiplayerAnswer();
+                stored.setPlayerId(playerId);
+                stored.setQuestionIndex(questionIndex);
+                stored.setAnswerGiven(answer);
+                stored.setCorrect(true);
+                stored.setResponseTimeMs(now - state.questionStartTimeMs);
+                answerRepo.save(stored);
+            } else if ("single".equals(state.responseAttempts)) {
+                state.answeredPlayers.add(playerId);
+
+                MultiplayerAnswer stored = new MultiplayerAnswer();
+                stored.setPlayerId(playerId);
+                stored.setQuestionIndex(questionIndex);
+                stored.setAnswerGiven(answer);
+                stored.setCorrect(false);
+                stored.setResponseTimeMs(now - state.questionStartTimeMs);
+                answerRepo.save(stored);
+            }
 
             Map<String, Object> feedback = new HashMap<>();
             feedback.put("type", "ANSWER_RESULT");
@@ -246,11 +259,15 @@ public class GameService {
         final Set<UUID> answeredPlayers = new HashSet<>();
         ScheduledFuture<?> advanceFuture;
 
-        GameState(String roomCode, String quizMode, List<Country> questions, int questionDurationSeconds) {
+        final String responseAttempts;
+
+        GameState(String roomCode, String quizMode, List<Country> questions,
+                  int questionDurationSeconds, String responseAttempts) {
             this.roomCode = roomCode;
             this.quizMode = quizMode;
             this.questions = questions;
             this.questionDurationSeconds = questionDurationSeconds;
+            this.responseAttempts = responseAttempts;
         }
 
         Country currentQuestion() {

@@ -121,11 +121,13 @@ export default function MultiplayerGame() {
   const { theme } = useTheme()
   const {
     phase, question, answerResult, leaderboard, finalLeaderboard, correctAnswer,
-    playerId, quizMode, initRoom, submitAnswer: ctxSubmit, connected,
+    playerId, quizMode, responseAttempts, initRoom, submitAnswer: ctxSubmit, connected,
   } = useRoom()
 
   const [answer, setAnswer] = useState('')
-  const [submitted, setSubmitted] = useState(false)
+  const [submitted, setSubmitted] = useState(false)   // single mode: locked after any submit
+  const [submitting, setSubmitting] = useState(false) // unlimited mode: in-flight guard
+  const [wrongFlash, setWrongFlash] = useState(false) // unlimited mode: wrong-answer inline feedback
   const [flashClass, setFlashClass] = useState('')
   const inputRef = useRef()
 
@@ -141,7 +143,11 @@ export default function MultiplayerGame() {
     if (!playerId) {
       const { playerId: pid, hostToken, displayName, isHost } = JSON.parse(stored)
       api.getRoom(code).then(roomData => {
-        initRoom({ roomCode: code, playerId: pid, displayName, isHost, hostToken: hostToken || null, quizMode: roomData.quizMode, region: roomData.region })
+        initRoom({
+          roomCode: code, playerId: pid, displayName, isHost, hostToken: hostToken || null,
+          quizMode: roomData.quizMode, region: roomData.region,
+          responseAttempts: roomData.responseAttempts ?? 'unlimited',
+        })
       }).catch(() => navigate('/multiplayer'))
     }
   }, [code]) // eslint-disable-line
@@ -151,22 +157,44 @@ export default function MultiplayerGame() {
     if (phase === 'QUESTION') {
       setAnswer('')
       setSubmitted(false)
+      setSubmitting(false)
+      setWrongFlash(false)
       setFlashClass('')
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [phase, question?.questionIndex])
 
-  // Flash feedback when answer result arrives
+  // Handle answer result feedback
   useEffect(() => {
-    if (answerResult?.correct === true) setFlashClass('flash-correct')
-    else if (answerResult?.correct === false) setFlashClass('flash-wrong')
-  }, [answerResult])
+    if (answerResult?.correct === true) {
+      setFlashClass('flash-correct')
+      setSubmitting(false)
+    } else if (answerResult?.correct === false) {
+      setFlashClass('flash-wrong')
+      setSubmitting(false)
+      if (responseAttempts === 'unlimited') {
+        setWrongFlash(true)
+        setAnswer('')
+        setTimeout(() => {
+          setFlashClass('')
+          setWrongFlash(false)
+          inputRef.current?.focus()
+        }, 700)
+      }
+    }
+  }, [answerResult, responseAttempts])
 
   function handleSubmit(e) {
     e.preventDefault()
-    if (!answer.trim() || submitted || phase !== 'QUESTION') return
-    setSubmitted(true)
-    ctxSubmit(code, playerId, question.questionIndex, answer.trim())
+    if (!answer.trim() || phase !== 'QUESTION') return
+    if (responseAttempts === 'single') {
+      if (submitted) return
+      setSubmitted(true)
+    } else {
+      if (submitting) return
+      setSubmitting(true)
+    }
+    ctxSubmit(code, playerId, question.questionIndex, answer.trim(), responseAttempts)
   }
 
   if (phase === 'ENDED') {
@@ -272,45 +300,47 @@ export default function MultiplayerGame() {
             correctAnswer={correctAnswer}
             currentPlayerId={playerId}
           />
+        ) : phase === 'SUBMITTED' ? (
+          <div className="flex flex-col items-center gap-3 py-6">
+            {answerResult?.correct === true && (
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-lg font-semibold" style={{ color: '#059669' }}>Correct! +{answerResult.points?.toLocaleString()}</p>
+                <p className="text-sm text-muted">{answerResult.canonicalAnswer}</p>
+              </div>
+            )}
+            {answerResult?.correct === false && (
+              <p className="text-lg font-semibold text-error">Not quite!</p>
+            )}
+            {answerResult?.correct === null && (
+              <p className="text-sm text-muted animate-pulse">Submitted! Waiting for others…</p>
+            )}
+            <p className="text-xs text-muted mt-2">Results show when the timer ends</p>
+          </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            {submitted ? (
-              <div className="flex flex-col items-center gap-3 py-6">
-                {answerResult?.correct === true && (
-                  <div className="flex flex-col items-center gap-1">
-                    <p className="text-lg font-semibold" style={{ color: '#059669' }}>Correct! +{answerResult.points?.toLocaleString()}</p>
-                    <p className="text-sm text-muted">{answerResult.canonicalAnswer}</p>
-                  </div>
-                )}
-                {answerResult?.correct === false && (
-                  <p className="text-lg font-semibold text-error">Not quite!</p>
-                )}
-                {answerResult?.correct === null && (
-                  <p className="text-sm text-muted animate-pulse">Submitted! Waiting for others…</p>
-                )}
-                <p className="text-xs text-muted mt-2">Results show when the timer ends</p>
-              </div>
-            ) : (
-              <>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={answer}
-                  onChange={e => setAnswer(e.target.value)}
-                  placeholder="Type your answer…"
-                  autoComplete="off"
-                  className="w-full px-4 py-3 rounded-xl bg-surface border border-border-col text-primary text-base placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30"
-                />
-                <button
-                  type="submit"
-                  disabled={!answer.trim()}
-                  className="w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: '#7C3AED' }}
-                >
-                  Submit Answer
-                </button>
-              </>
+            {wrongFlash && (
+              <p className="text-sm font-semibold text-error">Wrong! Try again.</p>
             )}
+            <input
+              ref={inputRef}
+              type="text"
+              value={answer}
+              onChange={e => setAnswer(e.target.value)}
+              placeholder="Type your answer…"
+              autoComplete="off"
+              disabled={submitting}
+              className={`w-full px-4 py-3 rounded-xl bg-surface border text-primary text-base placeholder:text-muted focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 ${
+                wrongFlash ? 'border-error ring-2 ring-error/30' : 'border-border-col focus:ring-accent/30'
+              }`}
+            />
+            <button
+              type="submit"
+              disabled={!answer.trim() || submitting}
+              className="w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-40"
+              style={{ backgroundColor: '#7C3AED' }}
+            >
+              Submit Answer
+            </button>
           </form>
         )}
       </div>
