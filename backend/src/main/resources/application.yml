@@ -15,6 +15,9 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
 
+frontend:
+  origin: ${FRONTEND_ORIGIN:}
+
 geonames:
   username: ${GEONAMES_USERNAME:demo}
 
