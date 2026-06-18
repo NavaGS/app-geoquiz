@@ -42,6 +42,8 @@ export const api = {
   joinRoomRest: (code, displayName) =>
     request(`/api/rooms/${code}/join`, { method: 'POST', body: JSON.stringify({ displayName }) }),
   getRoom: (code) => request(`/api/rooms/${code}`),
+  updateRoomSettings: (code, body) =>
+    request(`/api/rooms/${code}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
 }
 
 export const BASE_WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080'

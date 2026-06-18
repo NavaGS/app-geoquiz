@@ -175,7 +175,7 @@ export default function GlobalSettingsModal({ onClose }) {
             onClick={save}
             className="w-full py-2.5 bg-accent text-white rounded-lg font-semibold hover:opacity-90 transition-opacity text-sm"
           >
-            {saved ? 'Saved ✓' : 'Save Settings'}
+            {saved ? 'Saved ✓' : 'Save'}
           </button>
         </div>
       </div>

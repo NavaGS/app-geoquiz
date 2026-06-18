@@ -122,6 +122,23 @@ public class RoomService {
     }
 
     @Transactional
+    public Room updateSettings(String roomCode, String hostToken,
+                               int difficultyRating, String difficultyMode,
+                               int maxQuestions, int questionDurationSeconds, String responseAttempts) {
+        validateHost(roomCode, hostToken);
+        Room room = getActiveRoom(roomCode);
+        if (room.getStatus() != RoomStatus.LOBBY) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change settings after game starts");
+        }
+        room.setDifficultyRating(Math.max(1, Math.min(5, difficultyRating)));
+        room.setDifficultyMode("exact".equals(difficultyMode) ? "exact" : "inclusive");
+        room.setMaxQuestions(Math.max(1, Math.min(30, maxQuestions)));
+        room.setQuestionDurationSeconds(Math.max(5, Math.min(60, questionDurationSeconds)));
+        room.setResponseAttempts("single".equals(responseAttempts) ? "single" : "unlimited");
+        return roomRepo.save(room);
+    }
+
+    @Transactional
     public void updateRoomStatus(String roomCode, RoomStatus status) {
         Room room = getActiveRoom(roomCode);
         room.setStatus(status);

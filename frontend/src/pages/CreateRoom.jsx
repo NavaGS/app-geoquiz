@@ -2,17 +2,14 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, Flag, Globe, Landmark } from 'lucide-react'
 import { api } from '../api/client.js'
-import { getDifficultySettings, DIFFICULTY_LABELS } from '../utils/difficultySettings.js'
 
 const MODES = [
-  { id: 'flags',    label: 'Flag Finder',   description: 'Identify countries by flag', Icon: Flag,     accent: '#1B3FE4' },
-  { id: 'capitals', label: 'Capital City',  description: 'Name the capital city',      Icon: Landmark, accent: '#EA580C' },
-  { id: 'map',      label: 'World Map',     description: 'Find the highlighted country', Icon: Globe,   accent: '#0D9488' },
+  { id: 'flags',    label: 'Flag Finder',   description: 'Identify countries by flag',    Icon: Flag,     accent: '#1B3FE4' },
+  { id: 'capitals', label: 'Capital City',  description: 'Name the capital city',          Icon: Landmark, accent: '#EA580C' },
+  { id: 'map',      label: 'World Map',     description: 'Find the highlighted country',   Icon: Globe,    accent: '#0D9488' },
 ]
 
 const REGIONS = ['All', 'Africa', 'Americas', 'Asia', 'Europe', 'Oceania']
-const QUESTION_COUNTS = [5, 10, 15, 20]
-const TIME_LIMITS = [5, 10, 15]
 
 export default function CreateRoom() {
   const navigate = useNavigate()
@@ -21,13 +18,6 @@ export default function CreateRoom() {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-
-  const savedDiff = getDifficultySettings()
-  const [difficultyRating, setDifficultyRating] = useState(savedDiff.rating)
-  const [difficultyMode, setDifficultyMode] = useState(savedDiff.mode)
-  const [maxQuestions, setMaxQuestions] = useState(15)
-  const [questionDurationSeconds, setQuestionDurationSeconds] = useState(20)
-  const [responseAttempts, setResponseAttempts] = useState('unlimited')
 
   async function handleCreate(e) {
     e.preventDefault()
@@ -39,15 +29,10 @@ export default function CreateRoom() {
         quizMode: mode,
         region,
         hostDisplayName: name.trim(),
-        difficultyRating,
-        difficultyMode,
-        maxQuestions,
-        questionDurationSeconds,
-        responseAttempts,
       })
       sessionStorage.setItem(`room_${roomCode}`, JSON.stringify({ playerId, hostToken, displayName: name.trim(), isHost: true }))
       navigate(`/room/${roomCode}`)
-    } catch (err) {
+    } catch {
       setError('Could not create room. Is the server running?')
     } finally {
       setLoading(false)
@@ -64,7 +49,7 @@ export default function CreateRoom() {
       </button>
 
       <h1 className="text-xl font-bold text-primary mb-1">Create a Room</h1>
-      <p className="text-sm text-muted mb-6">Choose a quiz mode and share the code with friends</p>
+      <p className="text-sm text-muted mb-6">Pick a mode and share the code — fine-tune settings once you're in the lobby</p>
 
       <form onSubmit={handleCreate} className="flex flex-col gap-6">
         <div>
@@ -125,103 +110,6 @@ export default function CreateRoom() {
               </button>
             ))}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">
-            Difficulty — <span className="text-primary normal-case font-medium">{DIFFICULTY_LABELS[difficultyRating - 1]}</span>
-          </label>
-          <input
-            type="range"
-            min={1} max={5} step={1}
-            value={difficultyRating}
-            onChange={e => setDifficultyRating(Number(e.target.value))}
-            className="w-full accent-[#7C3AED]"
-          />
-          <div className="flex justify-between text-[10px] text-muted mt-1">
-            <span>Very Easy</span><span>Very Hard</span>
-          </div>
-          <div className="flex gap-2 mt-2">
-            {['inclusive', 'exact'].map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setDifficultyMode(m)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all ${
-                  difficultyMode === m
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface border-border-col text-secondary hover:text-primary'
-                }`}
-              >
-                {m === 'inclusive' ? `Up to ${DIFFICULTY_LABELS[difficultyRating - 1]}` : `Only ${DIFFICULTY_LABELS[difficultyRating - 1]}`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Questions</label>
-          <div className="flex gap-2">
-            {QUESTION_COUNTS.map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setMaxQuestions(n)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                  maxQuestions === n
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface border-border-col text-secondary hover:text-primary'
-                }`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Time per question</label>
-          <div className="flex gap-2">
-            {TIME_LIMITS.map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setQuestionDurationSeconds(s)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                  questionDurationSeconds === s
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface border-border-col text-secondary hover:text-primary'
-                }`}
-              >
-                {s}s
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Response attempts</label>
-          <div className="flex gap-2">
-            {[['unlimited', 'Unlimited'], ['single', 'Single']].map(([val, label]) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setResponseAttempts(val)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                  responseAttempts === val
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface border-border-col text-secondary hover:text-primary'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted mt-1.5">
-            {responseAttempts === 'unlimited'
-              ? 'Players can keep trying until the timer runs out'
-              : 'Players get one submission per question'}
-          </p>
         </div>
 
         {error && <p className="text-sm text-error">{error}</p>}

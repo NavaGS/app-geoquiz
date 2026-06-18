@@ -1,21 +1,15 @@
 package com.geoquiz.dto.multiplayer;
 
-public class CreateRoomRequest {
-    private String quizMode;
-    private String region;
-    private String hostDisplayName;
-    private int difficultyRating = 2;
-    private String difficultyMode = "inclusive";
-    private int maxQuestions = 10;
-    private int questionDurationSeconds = 10;
-    private String responseAttempts = "unlimited";
+public class UpdateRoomSettingsRequest {
+    private String hostToken;
+    private int difficultyRating;
+    private String difficultyMode;
+    private int maxQuestions;
+    private int questionDurationSeconds;
+    private String responseAttempts;
 
-    public String getQuizMode() { return quizMode; }
-    public void setQuizMode(String quizMode) { this.quizMode = quizMode; }
-    public String getRegion() { return region; }
-    public void setRegion(String region) { this.region = region; }
-    public String getHostDisplayName() { return hostDisplayName; }
-    public void setHostDisplayName(String hostDisplayName) { this.hostDisplayName = hostDisplayName; }
+    public String getHostToken() { return hostToken; }
+    public void setHostToken(String hostToken) { this.hostToken = hostToken; }
     public int getDifficultyRating() { return difficultyRating; }
     public void setDifficultyRating(int difficultyRating) { this.difficultyRating = difficultyRating; }
     public String getDifficultyMode() { return difficultyMode; }

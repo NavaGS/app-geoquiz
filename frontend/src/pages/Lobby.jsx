@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Copy, Check, Users, Flag, Globe, Landmark } from 'lucide-react'
+import { Copy, Check, Users, Flag, Globe, Landmark, Settings } from 'lucide-react'
 import { useRoom } from '../contexts/RoomContext.jsx'
 import { api } from '../api/client.js'
 import { DIFFICULTY_LABELS } from '../utils/difficultySettings.js'
+import RoomSettingsModal from '../components/RoomSettingsModal.jsx'
 
 const MODE_META = {
   flags:    { label: 'Flag Finder',  Icon: Flag,     accent: '#1B3FE4' },
@@ -18,6 +19,7 @@ export default function Lobby() {
   const [copied, setCopied] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     const stored = sessionStorage.getItem(`room_${code}`)
@@ -153,6 +155,15 @@ export default function Lobby() {
 
       {error && <p className="text-sm text-error mb-4">{error}</p>}
 
+      {isHost && (
+        <button
+          onClick={() => setShowSettings(true)}
+          className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium text-secondary border border-border-col bg-surface hover:text-primary hover:border-accent/40 transition-colors mb-3"
+        >
+          <Settings size={15} strokeWidth={1.5} /> Game Settings
+        </button>
+      )}
+
       {isHost ? (
         <button
           onClick={handleStart}
@@ -170,6 +181,17 @@ export default function Lobby() {
       )}
 
       <p className="text-center text-xs text-muted mt-6">Share the room code with friends to invite them</p>
+
+      {showSettings && (
+        <RoomSettingsModal
+          initial={{ difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts }}
+          onSave={async (settings) => {
+            const stored = JSON.parse(sessionStorage.getItem(`room_${code}`) || '{}')
+            await api.updateRoomSettings(code, { hostToken: stored.hostToken, ...settings })
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   )
 }

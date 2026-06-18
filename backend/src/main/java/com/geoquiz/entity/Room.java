@@ -32,16 +32,16 @@ public class Room {
     private String region = "All";
 
     @Column(name = "difficulty_rating")
-    private int difficultyRating = 5;
+    private int difficultyRating = 2;
 
     @Column(name = "difficulty_mode", length = 20)
     private String difficultyMode = "inclusive";
 
     @Column(name = "max_questions")
-    private int maxQuestions = 15;
+    private int maxQuestions = 10;
 
     @Column(name = "question_duration_seconds")
-    private int questionDurationSeconds = 20;
+    private int questionDurationSeconds = 10;
 
     @Column(name = "response_attempts", length = 20)
     private String responseAttempts = "unlimited";

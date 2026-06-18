@@ -7,10 +7,10 @@ const initialState = {
   roomCode: null,
   quizMode: null,
   region: null,
-  difficultyRating: 5,
+  difficultyRating: 2,
   difficultyMode: 'inclusive',
-  maxQuestions: 15,
-  questionDurationSeconds: 20,
+  maxQuestions: 10,
+  questionDurationSeconds: 10,
   responseAttempts: 'unlimited',
   players: [],
   playerId: null,
@@ -33,6 +33,15 @@ function reducer(state, action) {
     case 'PLAYER_JOINED':
     case 'PLAYER_LEFT':
       return { ...state, players: action.payload.players ?? state.players }
+    case 'SETTINGS_UPDATED':
+      return {
+        ...state,
+        difficultyRating: action.payload.difficultyRating,
+        difficultyMode: action.payload.difficultyMode,
+        maxQuestions: action.payload.maxQuestions,
+        questionDurationSeconds: action.payload.questionDurationSeconds,
+        responseAttempts: action.payload.responseAttempts,
+      }
     case 'GAME_STARTED':
       return { ...state, phase: 'LOBBY' }
     case 'QUESTION_STARTED':
