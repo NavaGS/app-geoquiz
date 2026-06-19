@@ -7,10 +7,12 @@ import com.geoquiz.entity.CountryBoundary;
 import com.geoquiz.repository.CityRepository;
 import com.geoquiz.repository.CountryBoundaryRepository;
 import com.geoquiz.repository.CountryRepository;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/countries")
@@ -32,13 +34,25 @@ public class CountryController {
     }
 
     @GetMapping
-    public List<Map<String, Object>> listCountries(@RequestParam(defaultValue = "All") String region) {
+    public ResponseEntity<List<Map<String, Object>>> listCountries(@RequestParam(defaultValue = "All") String region) {
         List<Country> countries;
         if ("All".equalsIgnoreCase(region)) {
             countries = countryRepository.findAll();
         } else {
             countries = countryRepository.findByRegionIgnoreCase(region);
         }
+
+        // Bulk fetch in 2 queries instead of N+1 (one per country)
+        Set<Long> boundaryCountryIds = new HashSet<>(boundaryRepository.findAllCountryIds());
+
+        Map<Long, List<String>> cityNamesByCountry = new HashMap<>();
+        for (Object[] row : cityRepository.findAllNonCapitalCountryIdsAndNames()) {
+            Long countryId = (Long) row[0];
+            String name = (String) row[1];
+            List<String> names = cityNamesByCountry.computeIfAbsent(countryId, k -> new ArrayList<>());
+            if (names.size() < 3) names.add(name);
+        }
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (Country c : countries) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -51,16 +65,10 @@ public class CountryController {
             m.put("capital", c.getCapital());
             m.put("flagSvgUrl", c.getFlagSvgUrl());
             m.put("flagPngUrl", c.getFlagPngUrl());
-            // hasBoundary
-            boolean hasBoundary = boundaryRepository.findByCountryId(c.getId()).isPresent();
-            m.put("hasBoundary", hasBoundary);
+            m.put("hasBoundary", boundaryCountryIds.contains(c.getId()));
             m.put("difficulty", c.getDifficulty());
-            // cityCount + cityNames (non-capital cities only, top 3 by population)
-            List<City> cities = cityRepository.findByCountryIdAndIsCapitalFalseOrderByPopulationDesc(c.getId());
-            int limit = Math.min(3, cities.size());
-            m.put("cityCount", (long) limit);
-            List<String> cityNames = new ArrayList<>();
-            for (int i = 0; i < limit; i++) cityNames.add(cities.get(i).getName());
+            List<String> cityNames = cityNamesByCountry.getOrDefault(c.getId(), List.of());
+            m.put("cityCount", (long) cityNames.size());
             m.put("cityNames", cityNames);
             m.put("flagEmoji", c.getFlagEmoji());
             m.put("currencyCode", c.getCurrencyCode());
@@ -78,7 +86,10 @@ public class CountryController {
             } catch (Exception e) { m.put("borders", List.of()); }
             result.add(m);
         }
-        return result;
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePublic())
+                .body(result);
     }
 
     @GetMapping("/{iso}/flag")

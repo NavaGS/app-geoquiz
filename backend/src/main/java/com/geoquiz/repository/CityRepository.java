@@ -24,4 +24,7 @@ public interface CityRepository extends JpaRepository<City, Long> {
 
     @Query("SELECT COUNT(c) FROM City c WHERE c.country.id = :countryId AND c.isCapital = false")
     long countNonCapitalsByCountryId(@Param("countryId") Long countryId);
+
+    @Query("SELECT c.country.id, c.name FROM City c WHERE c.isCapital = false ORDER BY c.country.id ASC, c.population DESC")
+    List<Object[]> findAllNonCapitalCountryIdsAndNames();
 }
