@@ -57,7 +57,8 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       if (!c) return
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
       recordResult(iso, 'SKIP', null)
-      advanceRef.current?.()
+      setFlipped(true)
+      setTimeout(() => advanceRef.current?.(), 1300)
     }, [recordResult, getQuestion]),
   })
 
