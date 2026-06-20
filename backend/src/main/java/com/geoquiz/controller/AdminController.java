@@ -1,7 +1,6 @@
 package com.geoquiz.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.geoquiz.entity.City;
 import com.geoquiz.entity.Country;
 import com.geoquiz.repository.CityRepository;
 import com.geoquiz.repository.CountryBoundaryRepository;
@@ -38,23 +37,28 @@ public class AdminController {
     @GetMapping("/countries-data")
     public List<Map<String, Object>> getCountriesData() {
         List<Country> countries = countryRepository.findAll();
+
+        Set<Long> boundaryCountryIds = new HashSet<>(boundaryRepository.findAllCountryIds());
+
+        Map<Long, List<String>> cityNamesByCountry = new HashMap<>();
+        for (Object[] row : cityRepository.findAllNonCapitalCountryIdsAndNames()) {
+            Long countryId = (Long) row[0];
+            String name = (String) row[1];
+            List<String> names = cityNamesByCountry.computeIfAbsent(countryId, k -> new ArrayList<>());
+            if (names.size() < 3) names.add(name);
+        }
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (Country c : countries) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("nameCommon", c.getNameCommon());
             m.put("isoA2", c.getIsoA2());
             m.put("flagPngUrl", c.getFlagPngUrl());
-            boolean hasBoundary = boundaryRepository.findByCountryId(c.getId()).isPresent();
-            m.put("hasBoundary", hasBoundary);
+            m.put("hasBoundary", boundaryCountryIds.contains(c.getId()));
             m.put("capital", c.getCapital());
             m.put("difficulty", c.getDifficulty());
-            List<City> cities = cityRepository.findByCountryIdAndIsCapitalFalseOrderByPopulationDesc(c.getId());
-            int count = Math.min(3, cities.size());
-            m.put("cityCount", (long) count);
-            List<String> cityNames = new ArrayList<>();
-            for (int i = 0; i < count; i++) {
-                cityNames.add(cities.get(i).getName());
-            }
+            List<String> cityNames = cityNamesByCountry.getOrDefault(c.getId(), List.of());
+            m.put("cityCount", (long) cityNames.size());
             m.put("cityNames", cityNames);
             m.put("region", c.getRegion());
             m.put("subregion", c.getSubregion());
