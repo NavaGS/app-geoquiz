@@ -27,7 +27,7 @@ public class WebConfig {
                         .allowedHeaders("*")
                         .allowCredentials(false);
                 registry.addMapping("/admin/**")
-                        .allowedOrigins("http://localhost:5173")
+                        .allowedOrigins(origins)
                         .allowedMethods("GET", "POST");
             }
 
