@@ -19,5 +19,7 @@ public interface CountryRepository extends JpaRepository<Country, Long> {
     @Query("SELECT c FROM Country c WHERE LOWER(c.region) = LOWER(:region) OR :region = 'All'")
     List<Country> findByRegionOrAll(@Param("region") String region);
 
+    List<Country> findByCurrencyCodeIgnoreCase(String currencyCode);
+
     long count();
 }

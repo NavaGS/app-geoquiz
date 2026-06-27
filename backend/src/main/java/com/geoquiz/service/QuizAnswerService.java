@@ -20,7 +20,7 @@ public class QuizAnswerService {
 
     private static final Logger log = LoggerFactory.getLogger(QuizAnswerService.class);
     private static final double CORRECT_THRESHOLD = 0.92;
-    private static final double CLOSE_THRESHOLD = 0.80;
+    private static final double CLOSE_THRESHOLD = 0.85;
 
     private final CountryRepository countryRepository;
     private final JaroWinklerSimilarity jaroWinkler = new JaroWinklerSimilarity();

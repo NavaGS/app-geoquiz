@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
@@ -28,7 +28,7 @@ export default function CitiesQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'cities', region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'cities', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -37,22 +37,32 @@ export default function CitiesQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.country.isoA2)
+      if (unanswered) recordResult(c.country.isoA2, 'SKIP', c.country.nameCommon, null, { cityName: c.cityName })
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'cities', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'cities', region, isNewBest, results: historyRef.current } })
     },
   })
 
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
+  const flippedRef = useRef(false)
   useEffect(() => { currentRef.current = current }, [current])
+  useEffect(() => { flippedRef.current = flipped }, [flipped])
 
   const questionTimer = useCountdownTimer({
     seconds: 15,
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.country.isoA2, 'SKIP', null)
-      advanceRef.current?.()
+      recordResult(c.country.isoA2, 'SKIP', c.country.nameCommon, null, { cityName: c.cityName })
+      setTimeout(() => {
+        setFlipped(true)
+        setTimeout(() => advanceRef.current?.(), 2000)
+      }, 1000)
     },
   })
 
@@ -101,17 +111,19 @@ export default function CitiesQuiz() {
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
-    setFlipped(false)
     questionTimer.stop()
-    setQueue(prev => {
+    const wasFlipped = flippedRef.current
+    setFlipped(false)
+    const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'cities', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'cities', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
       return next
     })
+    if (wasFlipped) { setTimeout(updateQueue, 400) } else { updateQueue() }
   }
   useEffect(() => { advanceRef.current = advance })
 
@@ -122,9 +134,9 @@ export default function CitiesQuiz() {
       setFlashState('correct')
       setFeedback(result)
       questionTimer.stop()
-      recordResult(current.country.isoA2, 'CORRECT', result.canonicalName)
+      recordResult(current.country.isoA2, 'CORRECT', result.canonicalName, answer, { cityName: current.cityName })
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -135,6 +147,25 @@ export default function CitiesQuiz() {
       setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }
+
+  const frontContent = useMemo(() => current ? (
+    <div className="flex flex-col items-center gap-3 text-center">
+      <p className="text-xs text-muted uppercase tracking-widest">Which country is this city in?</p>
+      <p className="text-4xl font-bold text-primary tracking-tight">{current.cityName}</p>
+    </div>
+  ) : null, [current])
+
+  const backContent = useMemo(() => current ? (
+    <div className="text-center">
+      <p className="text-sm text-muted mb-1">{current.cityName} is in</p>
+      <p className="text-2xl font-bold text-primary tracking-tight">{current.country.nameCommon}</p>
+      {current.country.flagPngUrl && (
+        <div style={{ width: 90, height: 60 }} className="mx-auto mt-2 rounded-lg overflow-hidden border border-border-col">
+          <img src={current.country.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+      )}
+    </div>
+  ) : null, [current])
 
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
@@ -156,23 +187,8 @@ export default function CitiesQuiz() {
         <FlipCard
           flashState={flashState}
           autoFlip={flipped}
-          front={
-            <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-xs text-muted uppercase tracking-widest">Which country is this city in?</p>
-              <p className="text-4xl font-bold text-primary tracking-tight">{current.cityName}</p>
-            </div>
-          }
-          back={
-            <div className="text-center">
-              <p className="text-sm text-muted mb-1">{current.cityName} is in</p>
-              <p className="text-2xl font-bold text-primary tracking-tight">{current.country.nameCommon}</p>
-              {current.country.flagPngUrl && (
-                <div style={{ width: 90, height: 60 }} className="mx-auto mt-2 rounded-lg overflow-hidden border border-border-col">
-                  <img src={current.country.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              )}
-            </div>
-          }
+          front={frontContent}
+          back={backContent}
         />
 
         <AnswerInput
@@ -180,7 +196,7 @@ export default function CitiesQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.country.isoA2, 'SKIP', null); advance() }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.country.isoA2, 'SKIP', current.country.nameCommon, null, { cityName: current.cityName }); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type the country name…"
           flash={flashState}
@@ -193,8 +209,8 @@ export default function CitiesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
-            else { recordResult(current.country.isoA2, 'SKIP', null); advance() }
+            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName, answer, { cityName: current.cityName }); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
+            else { recordResult(current.country.isoA2, 'SKIP', current.country.nameCommon, null, { cityName: current.cityName }); advanceRef.current?.() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />

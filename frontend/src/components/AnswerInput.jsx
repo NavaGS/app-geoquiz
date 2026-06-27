@@ -1,22 +1,27 @@
-import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 
 const AnswerInput = forwardRef(function AnswerInput(
   { value, onChange, onSubmit, onSkip, disabled, placeholder = 'Type a country…', flash, focusKey },
   ref
 ) {
   const inputRef = useRef()
+  const [skipping, setSkipping] = useState(false)
 
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
   }))
 
   useEffect(() => {
+    setSkipping(false)
     inputRef.current?.focus()
   }, [focusKey])
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') { e.preventDefault(); onSubmit?.() }
-    if (e.key === 'Tab')   { e.preventDefault(); onSkip?.() }
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (!skipping && !disabled) { setSkipping(true); onSkip?.() }
+    }
   }
 
   const borderClass =
@@ -46,8 +51,8 @@ const AnswerInput = forwardRef(function AnswerInput(
           Enter
         </button>
         <button
-          onClick={onSkip}
-          disabled={disabled}
+          onClick={() => { if (!skipping && !disabled) { setSkipping(true); onSkip?.() } }}
+          disabled={disabled || skipping}
           className="text-muted text-sm disabled:opacity-50 hover:text-secondary"
         >
           Skip

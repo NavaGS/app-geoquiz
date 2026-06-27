@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
@@ -28,7 +28,7 @@ export default function LanguageQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, recordResult, savePersonalBest } = useQuizSession({ mode: 'language', region })
+  const { score, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'language', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -37,22 +37,32 @@ export default function LanguageQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.isoA2)
+      if (unanswered) recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'language', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'language', region, isNewBest, results: historyRef.current } })
     },
   })
 
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
+  const flippedRef = useRef(false)
   useEffect(() => { currentRef.current = current }, [current])
+  useEffect(() => { flippedRef.current = flipped }, [flipped])
 
   const questionTimer = useCountdownTimer({
     seconds: 15,
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.isoA2, 'SKIP', null)
-      advanceRef.current?.()
+      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
+      setTimeout(() => {
+        setFlipped(true)
+        setTimeout(() => advanceRef.current?.(), 2000)
+      }, 1000)
     },
   })
 
@@ -93,17 +103,19 @@ export default function LanguageQuiz() {
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
-    setFlipped(false)
     questionTimer.stop()
-    setQueue(prev => {
+    const wasFlipped = flippedRef.current
+    setFlipped(false)
+    const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'language', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'language', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
       return next
     })
+    if (wasFlipped) { setTimeout(updateQueue, 400) } else { updateQueue() }
   }
   useEffect(() => { advanceRef.current = advance })
 
@@ -115,9 +127,9 @@ export default function LanguageQuiz() {
       setFlashState('correct')
       setFeedback(fb)
       questionTimer.stop()
-      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
+      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer, answer, null)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else if (res.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(fb)
@@ -128,6 +140,29 @@ export default function LanguageQuiz() {
       setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
   }
+
+  const frontContent = useMemo(() => current ? (
+    <div className="flex flex-col items-center justify-center gap-2 text-center h-full">
+      <p className="text-xs text-muted uppercase tracking-widest">What language(s) do they speak here?</p>
+      <div className="flex items-center gap-3">
+        {current.flagPngUrl && (
+          <div style={{ width: 72, height: 48, flexShrink: 0 }} className="rounded overflow-hidden border border-border-col shadow-sm">
+            <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          </div>
+        )}
+        <p className="text-2xl font-bold text-primary tracking-tight text-left">{current.nameCommon}</p>
+      </div>
+    </div>
+  ) : null, [current])
+
+  const backContent = useMemo(() => current ? (
+    <div className="text-center">
+      <p className="text-sm text-muted mb-1">Languages spoken in {current.nameCommon}:</p>
+      <p className="text-xl font-semibold text-primary">
+        {current.languages && current.languages.length > 0 ? current.languages.join(', ') : '—'}
+      </p>
+    </div>
+  ) : null, [current])
 
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
@@ -149,29 +184,8 @@ export default function LanguageQuiz() {
         <FlipCard
           flashState={flashState}
           autoFlip={flipped}
-          front={
-            <div className="flex flex-col items-center justify-center gap-2 text-center h-full">
-              <p className="text-xs text-muted uppercase tracking-widest">What language(s) do they speak here?</p>
-              <div className="flex items-center gap-3">
-                {current.flagPngUrl && (
-                  <div style={{ width: 72, height: 48, flexShrink: 0 }} className="rounded overflow-hidden border border-border-col shadow-sm">
-                    <img src={current.flagPngUrl} alt="flag" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  </div>
-                )}
-                <p className="text-2xl font-bold text-primary tracking-tight text-left">{current.nameCommon}</p>
-              </div>
-            </div>
-          }
-          back={
-            <div className="text-center">
-              <p className="text-sm text-muted mb-1">Languages spoken in {current.nameCommon}:</p>
-              <p className="text-xl font-semibold text-primary">
-                {current.languages && current.languages.length > 0
-                  ? current.languages.join(', ')
-                  : '—'}
-              </p>
-            </div>
-          }
+          front={frontContent}
+          back={backContent}
         />
 
         <AnswerInput
@@ -179,7 +193,7 @@ export default function LanguageQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type a language…"
           flash={flashState}
@@ -192,8 +206,8 @@ export default function LanguageQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
-            else { recordResult(current.isoA2, 'SKIP', null); advance() }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName, answer, null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
+            else { recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null); advanceRef.current?.() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />

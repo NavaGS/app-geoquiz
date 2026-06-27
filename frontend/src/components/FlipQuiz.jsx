@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import FlipCard from './FlipCard.jsx'
 import AnswerInput from './AnswerInput.jsx'
@@ -12,7 +12,7 @@ import { getDifficultySettings, difficultyFilter } from '../utils/difficultySett
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
 import { getRegion } from '../utils/regionSettings.js'
 
-export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn, modeName, modeLabel }) {
+export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, renderBack, getQuestion, getCanonical, questionKey, filterFn, modeName, modeLabel }) {
   const navigate = useNavigate()
   const region = getRegion()
 
@@ -30,7 +30,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   const inputRef = useRef()
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode, region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode, evalMode, region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   // ── Session countdown timer ─────────────────────────────────────────────────
@@ -40,15 +40,23 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     onExpire: useCallback(() => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const currentISO = c ? (getQuestion ? getQuestion(c)?.iso : c.isoA2) : null
+      const unanswered = currentISO && (!last || last.countryIso !== currentISO)
+      if (unanswered) recordResult(currentISO, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode, region, isNewBest } })
-    }, [savePersonalBest, navigate, mode, region]),
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode, region, isNewBest, results: historyRef.current } })
+    }, [savePersonalBest, navigate, mode, region, getQuestion, getCanonical, recordResult]),
   })
 
   // ── Per-question timer ──────────────────────────────────────────────────────
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
+  const flippedRef = useRef(false)
   useEffect(() => { currentRef.current = current }, [current])
+  useEffect(() => { flippedRef.current = flipped }, [flipped])
 
   const questionTimer = useCountdownTimer({
     seconds: 15,
@@ -56,9 +64,12 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       const c = currentRef.current
       if (!c) return
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
-      recordResult(iso, 'SKIP', null)
-      advanceRef.current?.()
-    }, [recordResult, getQuestion]),
+      recordResult(iso, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
+      setTimeout(() => {
+        setFlipped(true)
+        setTimeout(() => advanceRef.current?.(), 2000)
+      }, 1000)
+    }, [recordResult, getQuestion, getCanonical]),
   })
 
   // ── Load countries ──────────────────────────────────────────────────────────
@@ -103,18 +114,24 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
-    setFlipped(false)
     questionTimer.stop()
-    setQueue(prev => {
+    const wasFlipped = flippedRef.current
+    setFlipped(false)
+    const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
         const isNewBest = savePersonalBest()
-        navigate('/session-end', { state: { score, mode, region, isNewBest } })
+        navigate('/session-end', { state: { score, mode, region, isNewBest, results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
       return next
     })
+    if (wasFlipped) {
+      setTimeout(updateQueue, 400)
+    } else {
+      updateQueue()
+    }
   }, [score, mode, region, savePersonalBest, navigate, questionTimer])
 
   useEffect(() => { advanceRef.current = advance }, [advance])
@@ -128,9 +145,9 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       setFlashState('correct')
       setFeedback(result)
       questionTimer.stop()
-      recordResult(question.iso, 'CORRECT', result.canonicalName)
+      recordResult(question.iso, 'CORRECT', result.canonicalName, answer, null)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -140,18 +157,18 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       setFeedback(null)
       setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
-  }, [answer, current, feedback, getQuestion, submitAnswer, recordResult, advance, questionTimer])
+  }, [answer, current, feedback, getQuestion, submitAnswer, recordResult, questionTimer])
 
   function handleConfirm() {
     if (!feedback) return
     questionTimer.stop()
     if (feedback.result === 'CLOSE') {
-      recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName)
+      recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName, answer, null)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else {
-      recordResult(getQuestion(current).iso, 'SKIP', null)
-      advance()
+      recordResult(getQuestion(current).iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+      advanceRef.current?.()
     }
   }
 
@@ -164,8 +181,9 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
 
   function handleSkip() {
     questionTimer.stop()
-    recordResult(getQuestion(current)?.iso, 'SKIP', null)
-    advance()
+    recordResult(getQuestion(current)?.iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+    setFlipped(true)
+    setTimeout(() => advanceRef.current?.(), 2000)
   }
 
   useEffect(() => {
@@ -178,6 +196,9 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
   }, [])
+
+  const frontContent = useMemo(() => current ? renderFront(current) : null, [current, renderFront])
+  const backContent  = useMemo(() => current ? renderBack(current)  : null, [current, renderBack])
 
   // ── Render ───────────────────────────────────────────────────────────────────
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading countries…</div>
@@ -213,8 +234,8 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
         )}
 
         <FlipCard
-          front={renderFront(current)}
-          back={renderBack(current)}
+          front={frontContent}
+          back={backContent}
           autoFlip={flipped}
           flashState={flashState}
         />

@@ -8,6 +8,7 @@ export default function CapitalsQuiz() {
       accentColor="#EA580C"
       filterFn={c => !!c.capital && c.capital.trim() !== ''}
       getQuestion={c => ({ iso: c.isoA2, question: c.nameCommon })}
+      getCanonical={c => c.capital}
       renderFront={c => (
         <div className="flex flex-col items-center gap-3 text-center">
           <p className="text-xs text-muted font-medium uppercase tracking-widest">What is the capital of?</p>

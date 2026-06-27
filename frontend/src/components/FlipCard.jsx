@@ -3,19 +3,15 @@ import { useState, useEffect, useCallback } from 'react'
 export default function FlipCard({ front, back, onFlip, autoFlip = false, flashState }) {
   const [flipped, setFlipped] = useState(false)
 
+  // Flip to match autoFlip, and reset when question content changes
   useEffect(() => {
-    if (autoFlip) setFlipped(true)
-  }, [autoFlip])
+    setFlipped(autoFlip)
+  }, [autoFlip, front])
 
   const flip = useCallback(() => {
     setFlipped(f => !f)
     onFlip?.()
   }, [onFlip])
-
-  // Reset on new question
-  useEffect(() => {
-    setFlipped(false)
-  }, [front])
 
   const flashClass =
     flashState === 'correct' ? 'flash-correct' :
