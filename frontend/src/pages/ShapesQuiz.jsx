@@ -98,7 +98,9 @@ export default function ShapesQuiz() {
 
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
+  const flippedRef = useRef(false)
   useEffect(() => { currentRef.current = current }, [current])
+  useEffect(() => { flippedRef.current = flipped }, [flipped])
 
   const questionTimer = useCountdownTimer({
     seconds: 15,
@@ -106,7 +108,10 @@ export default function ShapesQuiz() {
       const c = currentRef.current
       if (!c) return
       recordResult(c.isoA2, 'SKIP', null)
-      advanceRef.current?.()
+      setTimeout(() => {
+        setFlipped(true)
+        setTimeout(() => advanceRef.current?.(), 1600)
+      }, 1000)
     },
   })
 
@@ -153,9 +158,10 @@ export default function ShapesQuiz() {
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
-    setFlipped(false)
     questionTimer.stop()
-    setQueue(prev => {
+    const wasFlipped = flippedRef.current
+    setFlipped(false)
+    const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
         navigate('/session-end', { state: { score, mode: 'shapes', region, isNewBest: savePersonalBest() } })
@@ -164,6 +170,7 @@ export default function ShapesQuiz() {
       setCurrent(next[0])
       return next
     })
+    if (wasFlipped) { setTimeout(updateQueue, 400) } else { updateQueue() }
   }
   useEffect(() => { advanceRef.current = advance })
 
@@ -188,6 +195,20 @@ export default function ShapesQuiz() {
     }
   }
 
+  const frontContent = useMemo(() => current ? (
+    <div className="w-full flex flex-col items-center justify-center gap-2 h-full">
+      <p className="text-xs text-muted uppercase tracking-widest">Which country is this shape?</p>
+      <ShapeSvg geojsonStr={shapeData?.geojson} />
+    </div>
+  ) : null, [current, shapeData])
+
+  const backContent = useMemo(() => current ? (
+    <div className="text-center">
+      <p className="text-2xl font-bold text-primary tracking-tight">{current.nameCommon}</p>
+      <p className="text-sm text-muted mt-1">{current.region}</p>
+    </div>
+  ) : null, [current])
+
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
   if (!current) return null
 
@@ -208,18 +229,8 @@ export default function ShapesQuiz() {
         <FlipCard
           flashState={flashState}
           autoFlip={flipped}
-          front={
-            <div className="w-full flex flex-col items-center justify-center gap-2 h-full">
-              <p className="text-xs text-muted uppercase tracking-widest">Which country is this shape?</p>
-              <ShapeSvg geojsonStr={shapeData?.geojson} />
-            </div>
-          }
-          back={
-            <div className="text-center">
-              <p className="text-2xl font-bold text-primary tracking-tight">{current.nameCommon}</p>
-              <p className="text-sm text-muted mt-1">{current.region}</p>
-            </div>
-          }
+          front={frontContent}
+          back={backContent}
         />
 
         <AnswerInput
@@ -227,7 +238,7 @@ export default function ShapesQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 1600) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           flash={flashState}
           focusKey={qIndex}

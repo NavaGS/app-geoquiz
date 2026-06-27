@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react'
 
 export default function QuestionTimer({ remaining, total, startKey }) {
-  const [animWidth, setAnimWidth] = useState(100)
-  const [ready, setReady] = useState(false)
+  const [flash, setFlash] = useState(false)
 
+  // Instant reset on new question, then smooth transitions
   useEffect(() => {
-    setAnimWidth(100)
-    setReady(false)
-    const id = requestAnimationFrame(() => {
-      setReady(true)
-      setAnimWidth(0)
-    })
+    setFlash(true)
+    const id = requestAnimationFrame(() => setFlash(false))
     return () => cancelAnimationFrame(id)
   }, [startKey])
 
@@ -24,9 +20,9 @@ export default function QuestionTimer({ remaining, total, startKey }) {
         <div
           className="h-full rounded-full"
           style={{
-            width: `${animWidth}%`,
+            width: `${pct * 100}%`,
             backgroundColor: barColor,
-            transition: ready ? `width ${total}s linear` : 'none',
+            transition: flash ? 'none' : 'width 1s linear',
           }}
         />
       </div>

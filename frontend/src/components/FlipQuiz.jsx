@@ -48,7 +48,9 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   // ── Per-question timer ──────────────────────────────────────────────────────
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
+  const flippedRef = useRef(false)
   useEffect(() => { currentRef.current = current }, [current])
+  useEffect(() => { flippedRef.current = flipped }, [flipped])
 
   const questionTimer = useCountdownTimer({
     seconds: 15,
@@ -57,8 +59,10 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       if (!c) return
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
       recordResult(iso, 'SKIP', null)
-      setFlipped(true)
-      setTimeout(() => advanceRef.current?.(), 1000)
+      setTimeout(() => {
+        setFlipped(true)
+        setTimeout(() => advanceRef.current?.(), 1600)
+      }, 1000)
     }, [recordResult, getQuestion]),
   })
 
@@ -104,9 +108,10 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
-    setFlipped(false)
     questionTimer.stop()
-    setQueue(prev => {
+    const wasFlipped = flippedRef.current
+    setFlipped(false)
+    const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
         const isNewBest = savePersonalBest()
@@ -116,6 +121,11 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       setCurrent(next[0])
       return next
     })
+    if (wasFlipped) {
+      setTimeout(updateQueue, 400)
+    } else {
+      updateQueue()
+    }
   }, [score, mode, region, savePersonalBest, navigate, questionTimer])
 
   useEffect(() => { advanceRef.current = advance }, [advance])
@@ -167,7 +177,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     questionTimer.stop()
     recordResult(getQuestion(current)?.iso, 'SKIP', null)
     setFlipped(true)
-    setTimeout(advance, 1000)
+    setTimeout(advance, 1600)
   }
 
   useEffect(() => {
