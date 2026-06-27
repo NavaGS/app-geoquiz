@@ -46,8 +46,18 @@ export default function BordersQuiz() {
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
   const flippedRef = useRef(false)
+  const preFetchedBorderNamesRef = useRef([])
   useEffect(() => { currentRef.current = current }, [current])
   useEffect(() => { flippedRef.current = flipped }, [flipped])
+
+  // Pre-fetch border names when question changes so skip/expire can show them
+  useEffect(() => {
+    if (!current) return
+    preFetchedBorderNamesRef.current = []
+    api.submitBorderAnswer(current.isoA2, '').then(res => {
+      preFetchedBorderNamesRef.current = res.borderNames || []
+    }).catch(() => {})
+  }, [current])
 
   const questionTimer = useCountdownTimer({
     seconds: 15,
@@ -55,6 +65,7 @@ export default function BordersQuiz() {
       const c = currentRef.current
       if (!c) return
       recordResult(c.isoA2, 'SKIP', null)
+      setLastBorderNames(preFetchedBorderNamesRef.current)
       setTimeout(() => {
         setFlipped(true)
         setTimeout(() => advanceRef.current?.(), 2000)
@@ -183,6 +194,7 @@ export default function BordersQuiz() {
           autoFlip={flipped}
           front={frontContent}
           back={backContent}
+          onFlip={() => setLastBorderNames(preFetchedBorderNamesRef.current)}
         />
 
         <AnswerInput
@@ -190,7 +202,13 @@ export default function BordersQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
+          onSkip={() => {
+            questionTimer.stop()
+            recordResult(current.isoA2, 'SKIP', null)
+            setLastBorderNames(preFetchedBorderNamesRef.current)
+            setFlipped(true)
+            setTimeout(() => advanceRef.current?.(), 2000)
+          }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type a bordering country…"
           flash={flashState}
