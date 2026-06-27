@@ -1,137 +1,62 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
+import FeedbackBanner from '../components/FeedbackBanner.jsx'
 import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
-import { useQuizSession } from '../hooks/useQuizSession.js'
-import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
+import { useQuizCore } from '../hooks/useQuizCore.js'
 import { api } from '../api/client.js'
-import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
-import { getGameplaySettings } from '../utils/gameplaySettings.js'
 import { getRegion } from '../utils/regionSettings.js'
 
+function dedupeByCurrency(countries) {
+  const seen = new Set()
+  const unique = []
+  for (const c of countries) {
+    if (c.currencyCode && !seen.has(c.currencyCode)) {
+      seen.add(c.currencyCode)
+      unique.push(c)
+    }
+  }
+  return unique
+}
+
 export default function CurrencyQuiz() {
-  const navigate = useNavigate()
   const region = getRegion()
 
-  const [queue, setQueue] = useState([])
-  const [total, setTotal] = useState(0)
-  const [current, setCurrent] = useState(null)
-  const inputRef = useRef()
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState(null)
   const [flashState, setFlashState] = useState(null)
-  const [flipped, setFlipped] = useState(false)
   const [matchedCountry, setMatchedCountry] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const inputRef = useRef()
 
-  const gpRef = useRef(null)
-  const scoreRef = useRef(null)
-  const { score, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'currency', region })
-  useEffect(() => { scoreRef.current = score }, [score])
-
-  const sessionExpiredRef = useRef(false)
-  const sessionTimer = useCountdownTimer({
-    seconds: 60,
-    onExpire: () => {
-      if (sessionExpiredRef.current) return
-      sessionExpiredRef.current = true
-      const c = currentRef.current
-      const last = historyRef.current[historyRef.current.length - 1]
-      const unanswered = c && (!last || last.countryIso !== c.isoA2)
-      if (unanswered) recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
-      const isNewBest = savePersonalBest()
-      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
-      navigate('/session-end', { state: { score: sessionScore, mode: 'currency', region, isNewBest, results: historyRef.current } })
-    },
+  const {
+    current, loading, error, queueSize, qIndex, gp,
+    flipped, setFlipped,
+    score, historyRef, recordResult,
+    sessionTimer, questionTimer,
+    advanceRef, advanceQueue,
+    beginSubmit, endSubmit,
+  } = useQuizCore({
+    mode: 'currency',
+    region,
+    filterFn: c => !!c.currencyName,
+    buildQueue: dedupeByCurrency,
+    getIso: c => c.isoA2,
+    getCanonical: c => c.nameCommon,
   })
-
-  const advanceRef = useRef(null)
-  const currentRef = useRef(null)
-  const flippedRef = useRef(false)
-  useEffect(() => { currentRef.current = current }, [current])
-  useEffect(() => { flippedRef.current = flipped }, [flipped])
-
-  const questionTimer = useCountdownTimer({
-    seconds: 15,
-    onExpire: () => {
-      const c = currentRef.current
-      if (!c) return
-      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
-      setTimeout(() => {
-        setFlipped(true)
-        setTimeout(() => advanceRef.current?.(), 2000)
-      }, 1000)
-    },
-  })
-
-  useEffect(() => {
-    api.getCountries(region).then(data => {
-      const gp = getGameplaySettings()
-      gpRef.current = gp
-
-      const { rating, mode } = getDifficultySettings()
-      const filtered = data
-        .filter(c => !!c.currencyName)
-        .filter(difficultyFilter(rating, mode))
-
-      // Each currency appears once — deduplicate by currency code
-      const seen = new Set()
-      const unique = []
-      for (const c of filtered) {
-        if (c.currencyCode && !seen.has(c.currencyCode)) {
-          seen.add(c.currencyCode)
-          unique.push(c)
-        }
-      }
-
-      let shuffled = [...unique].sort(() => Math.random() - 0.5)
-      if (gp.mode === 'maxquestions') {
-        shuffled = shuffled.slice(0, Math.min(shuffled.length, gp.maxQuestions))
-      }
-
-      setTotal(shuffled.length)
-      setQueue(shuffled)
-      setCurrent(shuffled[0])
-      setLoading(false)
-
-      if (gp.mode === 'countdown') {
-        sessionTimer.startFrom(gp.countdownSecs)
-      }
-    })
-  }, [region])
-
-  useEffect(() => {
-    const gp = gpRef.current
-    if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
-    if (!current) return
-    questionTimer.startFrom(gp.perQuestionSecs)
-  }, [current])
 
   function advance() {
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
     setMatchedCountry(null)
-    questionTimer.stop()
-    const wasFlipped = flippedRef.current
-    setFlipped(false)
-    const updateQueue = () => setQueue(prev => {
-      const next = prev.slice(1)
-      if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'currency', region, isNewBest: savePersonalBest(), results: historyRef.current } })
-        return prev
-      }
-      setCurrent(next[0])
-      return next
-    })
-    if (wasFlipped) { setTimeout(updateQueue, 400) } else { updateQueue() }
+    advanceQueue()
   }
   useEffect(() => { advanceRef.current = advance })
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
+    if (!beginSubmit()) return
     const res = await api.submitCurrencyAnswer(current.isoA2, answer)
     if (res.result === 'CORRECT') {
       setFlashState('correct')
@@ -141,7 +66,13 @@ export default function CurrencyQuiz() {
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
+    } else if (res.result === 'CLOSE') {
+      endSubmit()
+      questionTimer.stop()
+      setFlashState('close')
+      setFeedback({ result: 'CLOSE', canonicalName: res.canonicalAnswer })
     } else {
+      endSubmit()
       setAnswer('')
       setFlashState('wrong')
       setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
@@ -165,28 +96,17 @@ export default function CurrencyQuiz() {
   ) : null, [current, matchedCountry])
 
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading…</div>
+  if (error)   return <div className="min-h-screen bg-base flex items-center justify-center text-error">{error}</div>
   if (!current) return null
 
-  const gp = gpRef.current || { mode: 'none' }
   const showQTimer = gp.mode === 'maxquestions' && gp.perQuestionTimer
-  const qIndex = total - queue.length + 1
 
   return (
     <div className="min-h-screen bg-base flex flex-col">
-      <QuizHeader modeName="Currency" region={region} score={score} sessionTimer={sessionTimer} gp={gp} qIndex={qIndex} total={total} />
-
+      <QuizHeader modeName="Currency" region={region} score={score} sessionTimer={sessionTimer} gp={gp} qIndex={qIndex} total={queueSize} />
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 flex flex-col gap-5">
-        {showQTimer && (
-          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
-        )}
-
-        <FlipCard
-          flashState={flashState}
-          autoFlip={flipped}
-          front={frontContent}
-          back={backContent}
-        />
-
+        {showQTimer && <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />}
+        <FlipCard flashState={flashState} autoFlip={flipped} front={frontContent} back={backContent} />
         <AnswerInput
           ref={inputRef}
           value={answer}
@@ -202,6 +122,19 @@ export default function CurrencyQuiz() {
           placeholder="Type a country name…"
           flash={flashState}
           focusKey={qIndex}
+        />
+        <FeedbackBanner
+          result={feedback?.result}
+          canonicalName={feedback?.canonicalName}
+          onConfirm={() => {
+            questionTimer.stop()
+            if (feedback?.result === 'CLOSE') {
+              recordResult(current.isoA2, 'CORRECT', feedback.canonicalName, answer, null)
+              setFlipped(true)
+              setTimeout(() => advanceRef.current?.(), 700)
+            }
+          }}
+          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
       </main>
     </div>

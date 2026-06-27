@@ -22,23 +22,11 @@ export const api = {
   getWorldGeoJson: (region = 'All') => request(`/api/map/geojson?region=${encodeURIComponent(region)}`),
   submitAnswer: (body) => request('/api/quiz/answer', { method: 'POST', body: JSON.stringify(body) }),
   submitLanguageAnswer: (countryIso, answer) =>
-    fetch(`${BASE_URL}/api/quiz/language-answer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countryIso, answer }),
-    }).then(r => r.json()),
+    request('/api/quiz/language-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer }) }),
   submitCurrencyAnswer: (countryIso, answer) =>
-    fetch(`${BASE_URL}/api/quiz/currency-answer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countryIso, answer }),
-    }).then(r => r.json()),
+    request('/api/quiz/currency-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer }) }),
   submitBorderAnswer: (countryIso, answer) =>
-    fetch(`${BASE_URL}/api/quiz/border-answer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countryIso, answer }),
-    }).then(r => r.json()),
+    request('/api/quiz/border-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer }) }),
   logEvent: (body) => request('/api/events/quiz', { method: 'POST', body: JSON.stringify(body) }),
   getStats: () => request('/api/monitoring/stats'),
   triggerRefresh: () => request('/admin/refresh-data', { method: 'POST' }),
