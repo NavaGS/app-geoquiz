@@ -1,7 +1,7 @@
 # GeoQuiz — Implementation Spec
-**Version:** 1.4.1 (built from spec v1.0.0)
+**Version:** 1.5.0 (built from spec v1.0.0)
 **Date:** June 2026
-**Status:** Active — reflects actual implemented decisions
+**Status:** Active — reflects actual implemented decisions + post-refactor architecture
 
 > This document supersedes the original `GeoQuiz_App_Spec_v1.0.0.md`.
 > It preserves all original intent but replaces deferred decisions with what was actually built,
@@ -121,9 +121,12 @@ Alias sources (seeded from mledoze/countries):
 | Routing | React Router v6 |
 | Map rendering | D3.js v7 + GeoJSON |
 | Styling | Tailwind CSS |
-| State management | React Context + useReducer |
+| Quiz state management | `useQuizCore` custom hook (shared across all quiz pages) |
+| App-wide state | React Context + useReducer (`RoomContext`, `ThemeContext`) |
 | Build tool | Vite |
 | Charts (monitoring) | Recharts |
+
+**Key frontend architectural principle:** quiz pages own only their mode-specific concerns (API call, filter predicate, render layout). All timer management, question advancing, score tracking, and submission guards live in `useQuizCore`. See Section 22 for detailed patterns.
 
 ### 7.2 Backend
 
@@ -399,13 +402,17 @@ geoquiz/
     Dockerfile          Production build (serve static dist)
     Dockerfile.dev      Dev build — runs Vite dev server with hot reload
     src/
-      api/client.js     fetch wrapper pointing to localhost:8080
+      api/client.js     Shared fetch wrapper (request()) — ALL API methods must use this
       components/       FlipCard, FlipQuiz, AnswerInput, FeedbackBanner, ScoreBar,
-                        SessionTimer, QuestionTimer
-      hooks/            useQuizSession, useCountdownTimer
-      utils/            difficultySettings.js, gameplaySettings.js
+                        SessionTimer, QuestionTimer, RoomSettingsModal
+      hooks/            useQuizCore (shared quiz state — timers, advance, guards, score),
+                        useCountdownTimer (drift-free absolute-time countdown),
+                        useStompClient (STOMP WS with publish queue + identity-based cleanup)
+      contexts/         RoomContext (multiplayer phase machine), ThemeContext
+      utils/            difficultySettings.js, gameplaySettings.js, regionSettings.js
       pages/            Home, FlagsQuiz, MapQuiz, CapitalsQuiz, CitiesQuiz, ShapesQuiz,
                         CurrencyQuiz, LanguageQuiz, BordersQuiz,
+                        Lobby, CreateRoom, JoinRoom, MultiplayerGame,
                         Monitoring, AdminCentre, SessionEnd
   backend/
     src/main/java/com/geoquiz/
@@ -619,7 +626,7 @@ Game Play Mode is a centrally-controlled setting (Admin Centre → Settings) tha
 
 **`utils/gameplaySettings.js`** — `getGameplaySettings()`, `setGameplaySettings(s)`
 
-**`hooks/useCountdownTimer.js`** — countdown hook returning `{ remaining, start, stop, startFrom }`. Uses `useRef` for the interval to avoid stale closures. `startFrom(n)` atomically resets and starts in one call.
+**`hooks/useCountdownTimer.js`** — drift-free countdown. Sets an absolute `endTimeRef = Date.now() + secs * 1000` on start; each 200ms poll computes `Math.ceil((endTimeRef - Date.now()) / 1000)` rather than decrementing a counter. React state is only updated when the integer second changes (~1 Hz renders). Returns `{ remaining, isRunning, start, stop, reset, startFrom }`. `startFrom(n)` atomically resets and starts in one call. Handles background-tab throttle automatically on resume.
 
 **`components/SessionTimer.jsx`** — MM:SS display + draining progress bar. Pulses red at ≤10s.
 
@@ -629,7 +636,7 @@ Settings are read at quiz-start time (inside the countries-load `useEffect`). Ch
 
 ### 20.6 Applied In All Quizzes
 
-Both `FlipQuiz` (shared component, used by Flags, Capitals, Currency) and all standalone quiz pages (MapQuiz, CitiesQuiz, ShapesQuiz, LanguageQuiz, BordersQuiz) implement identical gameplay logic. When `mode === 'none'`, behaviour is unchanged from the baseline.
+Both `FlipQuiz` (shared component, used by Flags, Capitals, Currency) and all standalone quiz pages (MapQuiz, CitiesQuiz, ShapesQuiz, LanguageQuiz, BordersQuiz) implement identical gameplay logic via `useQuizCore`. When `mode === 'none'`, behaviour is unchanged from the baseline. See Section 22.1 for how to add a new mode without duplicating this logic.
 
 ---
 
@@ -678,3 +685,136 @@ All seeded from mledoze/countries on every refresh (not seed-once like `difficul
 | `borders` | `borders` array | Stored as JSON array of ISO A3 codes e.g. `["AND","BEL"]` |
 
 Multi-currency countries: only the first currency entry is stored. This covers the vast majority of quiz-relevant cases.
+
+---
+
+## 22. Frontend Architecture Patterns
+
+This section documents deliberate design decisions established during refactoring. Follow these patterns when adding new quiz modes, multiplayer features, or timer-driven UI.
+
+---
+
+### 22.1 Shared Quiz State — `useQuizCore`
+
+All quiz pages (both `FlipQuiz`-backed and standalone) delegate their shared state to `useQuizCore`. A new quiz mode must **not** re-implement timer management, advance logic, score tracking, or submission guards. Only mode-specific concerns belong in the page component.
+
+**What `useQuizCore` owns:**
+- Country queue building (fetch, filter, difficulty filter, shuffle, slice for maxquestions)
+- `sessionTimer` and `questionTimer` instances
+- `score`, `historyRef`, `recordResult` (settled wrapper — see 22.2)
+- `advanceRef`, `advanceQueue` (advances queue + resets all per-question guards)
+- `beginSubmit` / `endSubmit` in-flight API guards (see 22.2)
+- `questionSettledRef`, `questionGenRef` (see 22.2)
+- Loading / error state
+
+**What the page component owns:**
+- Mode-specific `filterFn`, `buildQueue`, `getIso`, `getCanonical` passed to `useQuizCore`
+- The actual API call (`api.submitXxxAnswer(...)`)
+- Local display state (`answer`, `feedback`, `flashState`, etc.)
+- Render JSX
+
+```js
+// Correct pattern for a new quiz page
+const { current, score, recordResult, beginSubmit, endSubmit,
+        questionTimer, advanceRef, advanceQueue, ... } = useQuizCore({
+  mode: 'mymode',
+  region,
+  filterFn: c => !!c.someField,
+  buildQueue: countries => shuffle(countries),
+  getIso: c => c.isoA2,
+  getCanonical: c => c.nameCommon,
+})
+```
+
+---
+
+### 22.2 Per-Question Result Guard System
+
+Three refs prevent race conditions between concurrent submit paths (timer expiry, user confirm, double-click):
+
+| Ref | Purpose | Reset by |
+|---|---|---|
+| `questionSettledRef` | Only the first `recordResult` call per question is recorded; all subsequent calls are no-ops | `advanceQueue()` |
+| `questionGenRef` | Integer generation counter; stale `setTimeout` advance callbacks compare their captured gen and bail if it has changed | `advanceQueue()` |
+| `submittingRef` | Prevents a second API call while the first is in-flight | `beginSubmit()` sets it; `endSubmit()` clears it on non-CORRECT paths |
+
+**Rules:**
+1. All `handleSubmit` functions must call `beginSubmit()` before the API await and `endSubmit()` on CLOSE/WRONG branches.
+2. `questionTimer.stop()` must be called immediately on receiving a CORRECT or CLOSE result — before any async work — to prevent the timer from recording a SKIP during the API await.
+3. Timer expiry callbacks that call `advanceRef.current?.()` via `setTimeout` must capture `questionGenRef.current` at schedule time and bail if the gen has changed by fire time.
+
+---
+
+### 22.3 Drift-Free Timer
+
+Never implement a countdown by decrementing a counter in `setInterval`. Use `useCountdownTimer` which anchors to an absolute end time.
+
+**When extending timer behaviour:**
+- `startFrom(secs)` — reset + start in one call (use this on new question, not `reset()` + `start()`)
+- `stop()` — preserves sub-second residual so `start()` can resume accurately
+- Poll interval is 200ms; this is intentional for sub-second expiry accuracy. Do not increase it.
+- `onExpire` is held in a ref — safe to pass a new function reference each render.
+
+---
+
+### 22.4 Stable FlipCard Prop References
+
+`FlipCard` has a `useEffect([autoFlip])` that re-syncs the card's flip state when `autoFlip` changes. If props passed to `FlipQuiz` (such as `renderFront`, `renderBack`, `filterFn`, `getQuestion`, `getCanonical`) are inline arrow functions, they create a new reference on every render — this causes spurious re-renders and can desync the flip state.
+
+**Rule:** Any function prop passed to `FlipQuiz` or `FlipCard` that does not close over component state must be defined at **module scope**, not inside the component function.
+
+```js
+// Correct — module scope, stable reference
+function renderFront(c) {
+  return <FlagImage url={c.flagPngUrl} />
+}
+
+export default function FlagsQuiz() {
+  // renderFront passed by reference — no new object on each render
+  return <FlipQuiz renderFront={renderFront} ... />
+}
+```
+
+---
+
+### 22.5 API Client — Shared Request Wrapper
+
+All methods in `api/client.js` must call the internal `request(method, path, body)` wrapper, which handles:
+- `res.ok` checking and `Error` throwing on non-2xx
+- JSON vs text response parsing
+- Consistent error propagation to callers
+
+**Never use raw `fetch()` directly in `api/client.js`** — callers rely on the wrapper throwing on errors so they can display error state rather than silently receiving malformed payloads.
+
+---
+
+### 22.6 STOMP WebSocket Patterns
+
+Two invariants must be maintained in `useStompClient`:
+
+**Publish queuing:** If `publish()` is called while the STOMP client is disconnected (reconnecting after a network blip), the message must be queued to `pendingPublishes` and flushed on the next `onConnect`. Do not silently drop messages — answers and join announcements submitted during a reconnect window would otherwise be permanently lost.
+
+**Subscription cleanup by identity:** When a `subscribe()` call is cleaned up before the STOMP client connects (pending subscription), remove the exact pending object by reference (`s !== pending`), not by topic string. Multiple callers can subscribe to the same topic; topic-based removal would incorrectly delete all of them when only one unsubscribes.
+
+---
+
+### 22.7 Multiplayer Phase Lifecycle (RoomContext)
+
+The `phase` field in `RoomContext` is a state machine. Valid transitions:
+
+```
+LOBBY → STARTING  (GAME_STARTED WS message received)
+STARTING → QUESTION  (QUESTION_STARTED WS message received)
+STARTING → LOBBY  (8s timeout fires — QUESTION_STARTED never arrived; sets gameStartError)
+QUESTION → SUBMITTED  (single-attempt mode: any answer sent)
+QUESTION → RESULTS  (QUESTION_ENDED received; unlimited-attempt wrong answers stay in QUESTION)
+SUBMITTED → RESULTS  (QUESTION_ENDED received)
+RESULTS → QUESTION  (next QUESTION_STARTED received)
+RESULTS → ENDED  (GAME_ENDED received)
+```
+
+**Rules:**
+- `STARTING` is a distinct phase from `LOBBY` — do not conflate them. `STARTING` means the server has confirmed game start but the first question has not yet arrived.
+- `MultiplayerGame` must guard against `phase === 'LOBBY' || phase === 'STARTING' || !question` before rendering the game UI.
+- `Lobby` must watch `gameStartError` and reset its "Starting…" spinner if the timeout fires.
+- The 8-second recovery timeout (`gameStartTimeoutRef`) is started when `GAME_STARTED` arrives and cleared when `QUESTION_STARTED` arrives. It must also be cleared on unmount.

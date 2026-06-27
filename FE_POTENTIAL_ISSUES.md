@@ -1,7 +1,7 @@
 # Frontend Potential Issues & Business Logic Analysis
 
 > Generated: 2026-06-27  
-> Last updated: 2026-06-28 — issues 1.1, 1.2, 2.1, 3.1, 4.1, 5.1, 5.2, 5.3, 6.1, 6.2, 7.2, 9.1 resolved; 7.1 confirmed deliberate  
+> Last updated: 2026-06-28 — showing only unresolved issues (all Low severity)  
 > Scope: Full source review — all quiz modes, multiplayer, hooks, context, and utilities
 
 ---
@@ -22,54 +22,15 @@
 
 ## 1. Race Conditions & Concurrency
 
-### 1.1 CLOSE banner + question timer expiry = double result record
-**Severity: High | Files: `FlipQuiz.jsx`, `ShapesQuiz.jsx`, `CitiesQuiz.jsx`, `LanguageQuiz.jsx`**
-**Status: ✅ RESOLVED**
-
-When a user gets a CLOSE result and the FeedbackBanner is visible, the question timer continues counting down. If the timer expires while the banner is open, `questionTimer.onExpire` fires and records a `SKIP`, then queues `advanceRef.current?.()` via two nested `setTimeout`s. During the 1–3 second window before advance fires, the banner is still visible. If the user clicks "Yes, that's it!" before advance fires:
-
-1. `questionTimer.onExpire` already recorded `SKIP` for the question
-2. `handleConfirm` also records `CORRECT` for the same question
-3. Both `advance` calls fire, advancing twice (second is a no-op on an empty queue but corrupts in-flight state)
-
-The result: a single question has both SKIP and CORRECT in `historyRef`. The score will be inflated with one extra entry.
-
-There is no mutual exclusion between timer expiry and the confirm button. A simple boolean guard (e.g., `answeredRef`) set in both paths would fix this.
-
-**Fix applied:** Three ref guards added to `useQuizCore` and `FlipQuiz`:
-- `questionSettledRef` — only the first `recordResult` call per question goes through; subsequent calls are no-ops.
-- `questionGenRef` — incremented on every `advanceQueue()` call; stale `setTimeout` advance callbacks check the generation and bail if it has changed, preventing double-advance.
-- Question timer is stopped immediately when a CLOSE result is received (before the user can interact with the banner), eliminating the race for the common case. The settled flag is the safety net if the timer fired during the API await.
-
----
-
-### 1.2 Double API submission on rapid Enter key / double-click
-**Severity: High | File: `FlipQuiz.jsx`**
-**Status: ✅ RESOLVED**
-
-`handleSubmit` is `async`. The guard at the top is:
-```js
-if (!answer.trim() || !current || feedback) return
-```
-`feedback` is only set AFTER the `await submitAnswer(...)` call resolves. If the user presses Enter twice quickly (or double-clicks Submit), two async submissions fire before either resolves. Both pass the guard (feedback is null for both at start). If the first returns CORRECT, `recordResult(CORRECT)` fires. The second also resolves and also calls `recordResult(CORRECT)`, resulting in a **duplicate correct record** for the same question and two `setTimeout` advances queued.
-
-This applies to all quizzes using `handleSubmit` with an API await and no in-flight guard.
-
-Fix: a `submittingRef` boolean set to `true` before the await and reset after.
-
-**Fix applied:** `submittingRef` in-flight guard added to every quiz page's `handleSubmit`. `beginSubmit()` (exposed from `useQuizCore`, added locally to `FlipQuiz`) returns `false` if a call is already in-flight — the handler returns early. `endSubmit()` is called after the await on CLOSE/WRONG paths (CORRECT paths are gated by `feedback` state and reset by `advanceQueue`). Combined with `questionSettledRef`, the second concurrent submission can neither fire a second API call nor record a second result.
-
----
-
 ### 1.3 Question timer can fire after Skip
-**Severity: Medium | Files: `BordersQuiz.jsx`, `ShapesQuiz.jsx`, `LanguageQuiz.jsx`, `CitiesQuiz.jsx`**
+**Severity: Low | Files: `BordersQuiz.jsx`, `ShapesQuiz.jsx`, `LanguageQuiz.jsx`, `CitiesQuiz.jsx`**
 
 In these quizzes, `onSkip` correctly calls `questionTimer.stop()` first. However, `questionTimer.stop()` calls `clearInterval(intervalRef.current)`, which is synchronous. The `setInterval` callback is queued in the macrotask queue. If the timer's tick fires at the EXACT same JavaScript event loop turn as the skip click (impossible due to single-threading) this would be safe. However, if the interval fires between the last render and when `stop()` executes in the event handler, the timer could record an additional SKIP. The probability is low but non-zero under heavy load.
 
 ---
 
 ### 1.4 BordersQuiz pre-fetch with empty answer POSTs on every question
-**Severity: Medium | File: `BordersQuiz.jsx`**
+**Severity: Low | File: `BordersQuiz.jsx`**
 
 ```js
 useEffect(() => {
@@ -88,16 +49,6 @@ A dedicated read-only endpoint (GET `/api/borders/{iso}`) would be cleaner.
 ---
 
 ## 2. Timer Architecture
-
-### 2.1 `setInterval` drift accumulates over time
-**Severity: Medium | File: `useCountdownTimer.js`**
-**Status: ✅ RESOLVED**
-
-`setInterval` ticks are "at least N ms late" per firing, causing drift to accumulate over a 60-second session. Background-tab throttling could cause multi-second jumps on resume.
-
-**Fix applied:** `useCountdownTimer` now anchors on an absolute `endTimeRef` set to `Date.now() + secs * 1000` at start time. Each tick computes `Math.ceil((endTimeRef.current - Date.now()) / 1000)` — accurate regardless of late ticks. The poll interval is 200 ms (down from 1000 ms) so expiry fires within 200 ms of the real zero-crossing; React state is only updated when the displayed integer second changes, keeping the render rate at ~1 Hz. Background-tab recovery is automatic: the first tick after the browser throttle releases immediately corrects the displayed time.
-
----
 
 ### 2.2 Session timer does not stop question timer before navigating
 **Severity: Low | Files: `FlipQuiz.jsx`, `ShapesQuiz.jsx`, `CitiesQuiz.jsx`, etc.**
@@ -123,16 +74,6 @@ When a player gets a CLOSE result and clicks "Retype", the question timer is res
 ---
 
 ## 3. State & Closure Staleness
-
-### 3.1 Score passed to session-end can miss the last result in synchronous advance paths
-**Severity: Medium | Files: `FlipQuiz.jsx` (handleConfirm), standalone quizzes**
-**Status: ✅ RESOLVED**
-
-`FlipQuiz.advance()` was a `useCallback([score, ...])` that closed over the `score` state value at render time. When `recordResult` was called synchronously and `advance` fired in the same call stack (no `setTimeout`), the `score` captured in the closure was one update behind.
-
-**Fix applied:** `advance()` now reads `scoreRef.current` (the mutable ref that mirrors `score`, updated via `useEffect`) instead of the stale closure value. `score` removed from the `useCallback` dep array. The `useQuizCore` hook already used this pattern correctly; this aligns `FlipQuiz` with it.
-
----
 
 ### 3.2 `scoreRef.current` stale when session timer fires
 **Severity: Low | Files: all quiz pages with session timer**
@@ -184,22 +125,6 @@ Called once during component rendering. If a user could change their region sett
 
 ## 4. Component Architecture Issues
 
-### 4.1 FlipCard internal `flipped` state desyncs from `autoFlip` on user click
-**Severity: Medium | File: `FlipCard.jsx`**
-**Status: ✅ RESOLVED**
-
-`FlipCard` had its OWN internal `flipped` state. The sync effect included `front` as a dependency:
-```js
-useEffect(() => { setFlipped(autoFlip) }, [autoFlip, front])
-```
-In `FlagsQuiz` and `CapitalsQuiz`, `renderFront` was an inline arrow function — new reference every render — causing `frontContent` to recompute on every timer tick. The effect fired on every render, calling `setFlipped(false)` and immediately snapping back any card the user had clicked to peek.
-
-**Fix applied (two-part):**
-1. `FlagsQuiz.jsx` and `CapitalsQuiz.jsx`: All prop functions (`renderFront`, `renderBack`, `filterFn`, `getQuestion`, `getCanonical`) extracted to module scope. Being pure functions of their `c` argument with no component state, they need no closure and are stable across renders.
-2. `FlipCard.jsx`: Removed `front` from the sync effect's dep array. `autoFlip` alone is the authoritative flip trigger — the parent's `advance()` resets it to `false` on each new question, which is the correct signal to un-flip.
-
----
-
 ### 4.2 `FlipCard.onFlip` is not called when `autoFlip` triggers the flip
 **Severity: Low | File: `FlipCard.jsx`, `BordersQuiz.jsx`**
 
@@ -210,7 +135,7 @@ const flip = useCallback(() => {
 }, [onFlip])
 ```
 
-The `useEffect([autoFlip, front])` directly calls `setFlipped(autoFlip)` without invoking `onFlip`. In `BordersQuiz.jsx`, `onFlip` is:
+The `useEffect([autoFlip])` directly calls `setFlipped(autoFlip)` without invoking `onFlip`. In `BordersQuiz.jsx`, `onFlip` is:
 ```jsx
 onFlip={() => setLastBorderNames(preFetchedBorderNamesRef.current)}
 ```
@@ -281,54 +206,6 @@ The HOST badge is given to the player at index 0 in the array. This assumes the 
 
 ## 5. Multiplayer-Specific Issues
 
-### 5.1 WebSocket messages published during disconnection are silently dropped
-**Severity: High | File: `useStompClient.js`, `RoomContext.jsx`**
-**Status: ✅ RESOLVED**
-
-```js
-const publish = useCallback((destination, body) => {
-    clientRef.current?.publish({ destination, body: JSON.stringify(body) })
-}, [])
-```
-
-If the STOMP client is temporarily disconnected (e.g., network blip, auto-reconnect in progress), `publish` is a no-op — the answer, join announcement, or game-start message is permanently lost. The STOMP client reconnects after 3 seconds, but there is no queuing or retry mechanism. A player who submits an answer during this window has their answer silently discarded.
-
-**Fix applied:** `pendingPublishes` ref added to `useStompClient`. When `publish` is called while disconnected, the serialized message is pushed to the queue. On `onConnect`, all queued messages are flushed to the server before pending subscriptions are established. The server is responsible for rejecting stale messages (wrong `questionIndex`) if the game has moved on during the disconnection window.
-
----
-
-### 5.2 Pending subscription cleanup removes by topic, not by handler
-**Severity: Medium | File: `useStompClient.js`**
-**Status: ✅ RESOLVED**
-
-```js
-} else {
-    pendingSubscriptions.current.push({ topic, handler })
-    return () => {
-        pendingSubscriptions.current = pendingSubscriptions.current.filter(s => s.topic !== topic)
-    }
-}
-```
-
-The cleanup function filters by `topic` only. If `setupSubscriptions` in `RoomContext` is called twice before the STOMP client connects (e.g., if `initRoom` is called more than once, or in React StrictMode's double-invoke), both subscriptions for the same topic are pushed to pending. When the first one's cleanup runs, it removes **all** pending entries for that topic — including the second subscription. After reconnection, the second topic (e.g., the personal player channel `/topic/room/{code}/player/{id}`) would never be established. Result: the player misses all server messages sent to their private channel.
-
-**Fix applied:** Cleanup function now uses object identity (`s !== pending`) instead of topic comparison. Each `subscribe()` call creates a unique `pending` object; its cleanup removes only that specific entry.
-
----
-
-### 5.3 `GAME_STARTED` reducer action resets phase to `'LOBBY'`
-**Severity: Medium | File: `RoomContext.jsx`**
-**Status: ✅ RESOLVED**
-
-`GAME_STARTED` previously re-set `phase` to `'LOBBY'`, making it semantically indistinguishable from the pre-game waiting state. If `QUESTION_STARTED` was dropped or delayed, the client was permanently stuck with no recovery path.
-
-**Fix applied (three parts):**
-1. `GAME_STARTED` now transitions to `phase: 'STARTING'` — semantically distinct from `'LOBBY'`.
-2. `RoomContext` starts an 8-second timeout when `GAME_STARTED` arrives. If `QUESTION_STARTED` does not arrive in time, a `GAME_START_TIMEOUT` action resets to `phase: 'LOBBY'` and sets `gameStartError` in state. `Lobby.jsx` watches `gameStartError` and resets the "Starting…" spinner, showing the error inline so the host can retry.
-3. `MultiplayerGame.jsx`'s loading guard now checks `phase === 'STARTING'` in addition to `'LOBBY'`, so a direct-URL navigation during the start window shows the spinner rather than a blank screen.
-
----
-
 ### 5.4 Multiplayer MapView re-fetches GeoJSON on every phase transition
 **Severity: Low | File: `MultiplayerGame.jsx`**
 
@@ -354,26 +231,6 @@ If the server advances to the next question while the player's answer is in-tran
 
 ## 6. API & Data Loading
 
-### 6.1 Missing `.catch()` on country data fetch in most quiz pages
-**Severity: High | Files: `CitiesQuiz.jsx`, `LanguageQuiz.jsx`, `BordersQuiz.jsx`, `CurrencyQuiz.jsx`, `ShapesQuiz.jsx`**
-**Status: ✅ RESOLVED** (fixed in `useQuizCore` refactor)
-
-All these quizzes load countries in `useEffect` without a `.catch()`. If the API request fails, the component stays on "Loading…" indefinitely with no error message.
-
-**Fix applied:** The `useQuizCore` hook (introduced in the structural refactor) includes `.catch(e => { setError(e.message); setLoading(false) })` on the country fetch. All five pages now render the error state when `error` is truthy.
-
----
-
-### 6.2 API methods bypass the shared `request` wrapper — no error handling
-**Severity: Medium | File: `api/client.js`**
-**Status: ✅ RESOLVED**
-
-Three API methods used `fetch` directly without going through the shared `request()` wrapper, meaning non-200 responses were parsed silently as JSON and callers received malformed payloads.
-
-**Fix applied:** `submitLanguageAnswer`, `submitCurrencyAnswer`, and `submitBorderAnswer` now call `request()`, giving them `res.ok` checking, proper error throwing, and consistent JSON/text handling.
-
----
-
 ### 6.3 `Play Again` in SessionEnd navigates to routes that accept no incoming state
 **Severity: Low | File: `SessionEnd.jsx`**
 
@@ -390,26 +247,6 @@ This navigates with `{ state: { region, timer: 30 } }` in router state. None of 
 ---
 
 ## 7. Business Logic Inconsistencies
-
-### 7.1 MapQuiz records WRONG on incorrect answers; all other modes allow retries
-**Severity: Medium | Files: `MapQuiz.jsx` vs all others**
-**Status: Deliberate design decision — no code change**
-
-MapQuiz is intentionally harder: wrong = immediate advance + country reveal (single-attempt). This models the real-world difficulty of identifying a country purely from its map position. All other modes show the answer on the back of a flip card and allow unlimited retries, fitting a flashcard-learning metaphor.
-
-The inconsistency in the `wrong` score counter (always 0 in non-map modes) is a display limitation — non-map modes never call `recordResult(WRONG)` by design. If a unified wrong-count display is needed, a future pass should either normalise the result types or remove the counter from modes where it has no meaning.
-
----
-
-### 7.2 CurrencyQuiz silently drops CLOSE results from the API
-**Severity: Medium | File: `CurrencyQuiz.jsx`**
-**Status: ✅ RESOLVED**
-
-CurrencyQuiz treated `CLOSE` identically to `WRONG` — wrong flash, no hint, no confirmation. Every other fuzzy-matching mode shows the CLOSE banner.
-
-**Fix applied:** Added `CLOSE` branch to `handleSubmit` (stop timer, set CLOSE flash + feedback) and wired `FeedbackBanner` into the CurrencyQuiz render tree with the same `onConfirm`/`onRetry` pattern used by ShapesQuiz, LanguageQuiz, and CitiesQuiz. Currency CLOSE now records `CORRECT` on confirm and allows retype on retry, consistent with all other modes.
-
----
 
 ### 7.3 BordersQuiz accepts any ONE bordering country as correct
 **Severity: Low | File: `BordersQuiz.jsx` — business logic note**
@@ -459,7 +296,7 @@ The effective multiplayer difficulty depends on whether the server returns a rat
 ## 8. UX / Accessibility Concerns
 
 ### 8.1 No visual indication that question timer continues during CLOSE banner
-**Severity: Medium | Files: `FlipQuiz.jsx`, `ShapesQuiz.jsx`, etc.**
+**Severity: Low | Files: `FlipQuiz.jsx`, `ShapesQuiz.jsx`, etc.**
 
 When a player gets a CLOSE result, the CLOSE banner appears with "Yes, that's it!" and "Let me retype" buttons. The question timer bar continues depleting in the background. There is no visual urgency cue that time is running out. A player deliberating over the CLOSE banner could unknowingly let the timer expire, triggering a SKIP record before they click confirm (see issue 1.1).
 
@@ -517,16 +354,6 @@ A debug `console.log` with room codes and host tokens is present in the start ga
 
 ## 9. Code Duplication & Maintainability
 
-### 9.1 Six quiz pages duplicate the same timer + advance + session management pattern
-**Severity: Medium | Files: `ShapesQuiz.jsx`, `CitiesQuiz.jsx`, `LanguageQuiz.jsx`, `CurrencyQuiz.jsx`, `BordersQuiz.jsx`, `MapQuiz.jsx`**
-**Status: ✅ RESOLVED**
-
-Each page contained near-identical implementations of session/question timers, advance logic, and ref mirrors. A single bug fix required 7 changes.
-
-**Fix applied:** `useQuizCore` hook extracted as the single source of truth for all shared quiz state. All 6 standalone pages now delegate to it, keeping only mode-specific rendering, API calls, and local state. Bug fixes (like 1.1, 1.2, 6.1) now apply once in the hook and cover all modes automatically.
-
----
-
 ### 9.2 `advance()` in standalone quizzes uses `useEffect` without deps (runs every render)
 **Severity: Low | Files: `ShapesQuiz.jsx`, `CitiesQuiz.jsx`, `LanguageQuiz.jsx`, `CurrencyQuiz.jsx`, `BordersQuiz.jsx`**
 
@@ -549,24 +376,12 @@ Multiple multiplayer components use inline `style={{ backgroundColor: '#7C3AED' 
 
 | # | Issue | Severity | Status | File(s) |
 |---|-------|----------|--------|---------|
-| 1.1 | CLOSE banner + timer expiry = double result record | **High** | ✅ Fixed | FlipQuiz, ShapesQuiz, CitiesQuiz, LanguageQuiz |
-| 1.2 | Rapid Enter/double-click causes duplicate API submission | **High** | ✅ Fixed | All quiz pages |
-| 6.1 | Missing `.catch()` on data fetch — infinite loading on error | **High** | ✅ Fixed | All standalone quiz pages (via useQuizCore) |
-| 5.1 | Published WS messages dropped during reconnection | **High** | ✅ Fixed | useStompClient |
-| 9.1 | Six quiz pages duplicate session/question timer management | **Medium** | ✅ Fixed | All standalone quizzes |
-| 5.2 | Pending subscription cleanup removes wrong entries | **Medium** | ✅ Fixed | useStompClient |
-| 6.2 | submitLanguage/Currency/BorderAnswer bypass error wrapper | **Medium** | ✅ Fixed | api/client.js |
-| 4.1 | FlipCard desyncs on user click due to inline renderFront | **Medium** | ✅ Fixed | FlipCard, FlagsQuiz, CapitalsQuiz |
-| 3.1 | Last result missing from score in synchronous advance | **Medium** | ✅ Fixed | FlipQuiz (handleConfirm) |
-| 2.1 | setInterval timer drift — accumulates over session | **Medium** | ✅ Fixed | useCountdownTimer |
-| 5.3 | GAME_STARTED → LOBBY blocks recovery if QUESTION_STARTED drops | **Medium** | ✅ Fixed | RoomContext, Lobby, MultiplayerGame |
-| 7.1 | MapQuiz single-attempt vs other modes unlimited-retry | **Medium** | Deliberate | MapQuiz |
-| 7.2 | CurrencyQuiz silently drops CLOSE results | **Medium** | ✅ Fixed | CurrencyQuiz |
 | 1.3 | Timer can fire after Skip in same event loop tick | **Low** | Open | Multiple |
 | 1.4 | BordersQuiz pre-fetch POSTs empty answer (inflates monitoring) | **Low** | Open | BordersQuiz |
 | 2.2 | Session timer doesn't stop question timer before navigate | **Low** | Open | All quiz pages |
 | 2.3 | MapQuiz CLOSE retry restarts question timer (unfair extra time) | **Low** | Open | MapQuiz |
 | 3.2 | `scoreRef.current` stale by one render on session expiry | **Low** | Open | All quiz pages |
+| 3.3 | `advance` ref update pattern inconsistency — FlipQuiz vs standalone | **Low** | Open | All quiz pages |
 | 3.4 | `getRegion()` not reactive to localStorage changes | **Low** | Open | All quiz pages |
 | 4.2 | `onFlip` not called when autoFlip overrides | **Low** | Open | FlipCard, BordersQuiz |
 | 4.3 | FeedbackBanner onConfirm else-branch unreachable — future trap | **Low** | Open | FlipQuiz, ShapesQuiz, CitiesQuiz, LanguageQuiz |
@@ -576,10 +391,14 @@ Multiple multiplayer components use inline `style={{ backgroundColor: '#7C3AED' 
 | 5.4 | MapView re-fetches GeoJSON on every question in multiplayer | **Low** | Open | MultiplayerGame |
 | 5.5 | No client-side stale question index guard in multiplayer submit | **Low** | Open | MultiplayerGame |
 | 6.3 | Play Again passes ignored state to quiz routes | **Low** | Open | SessionEnd |
+| 7.3 | BordersQuiz accepts any single border (no progressive learning) | **Low** | Open | BordersQuiz |
 | 7.4 | CitiesQuiz allows same country to dominate queue | **Low** | Open | CitiesQuiz |
 | 7.5 | Difficulty default differs between singleplayer (5) and multiplayer (2) | **Low** | Open | difficultySettings, RoomContext |
 | 8.1 | No urgency cue that timer continues during CLOSE banner | **Low** | Open | FlipQuiz, others |
+| 8.2 | AnswerInput Skip button has no visual feedback after click | **Low** | Open | AnswerInput |
 | 8.3 | Spacebar flip blocked when input is focused | **Low** | Open | FlipQuiz |
+| 8.4 | No loading state when CLOSE banner confirm triggers advance | **Low** | Open | FlipQuiz |
 | 8.5 | Multiplayer game can start with 1 player | **Low** | Open | Lobby |
 | 8.6 | Debug console.log with host token in production | **Low** | Open | Lobby |
+| 9.2 | `advance` useEffect without deps runs on every render | **Low** | Open | Standalone quiz pages |
 | 9.3 | Hardcoded `#7C3AED` bypasses theme system | **Low** | Open | Multiplayer pages |
