@@ -31,6 +31,7 @@ export default function CitiesQuiz() {
     score, historyRef, submitAnswer, recordResult,
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
+    beginSubmit, endSubmit,
   } = useQuizCore({
     mode: 'cities',
     region,
@@ -51,6 +52,7 @@ export default function CitiesQuiz() {
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
+    if (!beginSubmit()) return
     const result = await submitAnswer(current.country.isoA2, answer)
     if (result.result === 'CORRECT') {
       setFlashState('correct')
@@ -60,9 +62,12 @@ export default function CitiesQuiz() {
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
+      endSubmit()
+      questionTimer.stop()
       setFlashState('close')
       setFeedback(result)
     } else {
+      endSubmit()
       setAnswer('')
       setFlashState('wrong')
       setFeedback(null)

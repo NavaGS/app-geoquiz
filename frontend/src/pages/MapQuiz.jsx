@@ -47,7 +47,8 @@ export default function MapQuiz() {
     flipped, setFlipped,
     score, historyRef, submitAnswer, recordResult,
     sessionTimer, questionTimer,
-    advanceRef, advanceQueue, currentRef,
+    advanceRef, advanceQueue, currentRef, questionGenRef,
+    beginSubmit, endSubmit,
   } = useQuizCore({
     mode: 'map',
     region,
@@ -63,10 +64,14 @@ export default function MapQuiz() {
     questionExpireImplRef.current = () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
+      const gen = questionGenRef.current
+      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)  // recordResult is settledRecord from hook
       setFlashState('wrong')
       setRevealName(c.nameCommon)
-      setTimeout(() => advanceRef.current?.(), 2000)
+      setTimeout(() => {
+        if (questionGenRef.current !== gen) return
+        advanceRef.current?.()
+      }, 2000)
     }
   })
 
@@ -241,6 +246,7 @@ export default function MapQuiz() {
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
+    if (!beginSubmit()) return
     questionTimer.stop()
     const result = await submitAnswer(current.isoA2, answer)
     if (result.result === 'CORRECT') {
@@ -249,9 +255,11 @@ export default function MapQuiz() {
       recordResult(current.isoA2, 'CORRECT', result.canonicalName, answer, null)
       setTimeout(() => advanceRef.current?.(), 1200)
     } else if (result.result === 'CLOSE') {
+      endSubmit()
       setFlashState('close')
       setFeedback(result)
     } else {
+      endSubmit()
       setFlashState('wrong')
       setRevealName(current.nameCommon)
       recordResult(current.isoA2, 'WRONG', current.nameCommon, answer, null)

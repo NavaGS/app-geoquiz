@@ -33,6 +33,11 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
   const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode, evalMode, region })
   useEffect(() => { scoreRef.current = score }, [score])
 
+  // ── Per-question guards (fix 1.1 + 1.2) ─────────────────────────────────────
+  const questionSettledRef = useRef(false) // prevents double-record per question
+  const questionGenRef = useRef(0)         // invalidates stale advance callbacks
+  const submittingRef = useRef(false)      // in-flight API call guard
+
   // ── Session countdown timer ─────────────────────────────────────────────────
   const sessionExpiredRef = useRef(false)
   const sessionTimer = useCountdownTimer({
@@ -63,11 +68,19 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     onExpire: useCallback(() => {
       const c = currentRef.current
       if (!c) return
+      const gen = questionGenRef.current
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
-      recordResult(iso, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
+      if (!questionSettledRef.current) {
+        questionSettledRef.current = true
+        recordResult(iso, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
+      }
       setTimeout(() => {
+        if (questionGenRef.current !== gen) return
         setFlipped(true)
-        setTimeout(() => advanceRef.current?.(), 2000)
+        setTimeout(() => {
+          if (questionGenRef.current !== gen) return
+          advanceRef.current?.()
+        }, 2000)
       }, 1000)
     }, [recordResult, getQuestion, getCanonical]),
   })
@@ -111,6 +124,11 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
 
   // ── Advance ─────────────────────────────────────────────────────────────────
   const advance = useCallback(() => {
+    // Reset per-question guards so the next question starts clean
+    questionSettledRef.current = false
+    submittingRef.current = false
+    questionGenRef.current += 1
+
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
@@ -139,19 +157,27 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!answer.trim() || !current || feedback) return
+    if (submittingRef.current) return
+    submittingRef.current = true
     const question = getQuestion(current)
     const result = await submitAnswer(question.iso, answer)
     if (result.result === 'CORRECT') {
       setFlashState('correct')
       setFeedback(result)
       questionTimer.stop()
-      recordResult(question.iso, 'CORRECT', result.canonicalName, answer, null)
+      if (!questionSettledRef.current) {
+        questionSettledRef.current = true
+        recordResult(question.iso, 'CORRECT', result.canonicalName, answer, null)
+      }
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
+      submittingRef.current = false
+      questionTimer.stop()
       setFlashState('close')
       setFeedback(result)
     } else {
+      submittingRef.current = false
       setAnswer('')
       setFlashState('wrong')
       setFeedback(null)
@@ -163,11 +189,17 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     if (!feedback) return
     questionTimer.stop()
     if (feedback.result === 'CLOSE') {
-      recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName, answer, null)
+      if (!questionSettledRef.current) {
+        questionSettledRef.current = true
+        recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName, answer, null)
+      }
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else {
-      recordResult(getQuestion(current).iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+      if (!questionSettledRef.current) {
+        questionSettledRef.current = true
+        recordResult(getQuestion(current).iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+      }
       advanceRef.current?.()
     }
   }
@@ -181,7 +213,10 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
 
   function handleSkip() {
     questionTimer.stop()
-    recordResult(getQuestion(current)?.iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+    if (!questionSettledRef.current) {
+      questionSettledRef.current = true
+      recordResult(getQuestion(current)?.iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+    }
     setFlipped(true)
     setTimeout(() => advanceRef.current?.(), 2000)
   }

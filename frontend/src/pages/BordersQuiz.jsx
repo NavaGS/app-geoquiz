@@ -24,6 +24,7 @@ export default function BordersQuiz() {
     score, historyRef, recordResult,
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
+    beginSubmit, endSubmit,
   } = useQuizCore({
     mode: 'borders',
     region,
@@ -52,6 +53,7 @@ export default function BordersQuiz() {
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
+    if (!beginSubmit()) return
     const res = await api.submitBorderAnswer(current.isoA2, answer)
     const borderNames = res.borderNames || []
     setLastBorderNames(borderNames)
@@ -62,6 +64,7 @@ export default function BordersQuiz() {
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else {
+      endSubmit()
       setAnswer('')
       setFlashState('wrong')
       setFeedback(null)

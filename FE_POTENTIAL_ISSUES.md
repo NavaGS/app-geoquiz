@@ -1,6 +1,7 @@
 # Frontend Potential Issues & Business Logic Analysis
 
 > Generated: 2026-06-27  
+> Last updated: 2026-06-28 — issues 1.1, 1.2, 5.1, 5.2, 6.1, 6.2, 9.1 resolved  
 > Scope: Full source review — all quiz modes, multiplayer, hooks, context, and utilities
 
 ---
@@ -23,6 +24,7 @@
 
 ### 1.1 CLOSE banner + question timer expiry = double result record
 **Severity: High | Files: `FlipQuiz.jsx`, `ShapesQuiz.jsx`, `CitiesQuiz.jsx`, `LanguageQuiz.jsx`**
+**Status: ✅ RESOLVED**
 
 When a user gets a CLOSE result and the FeedbackBanner is visible, the question timer continues counting down. If the timer expires while the banner is open, `questionTimer.onExpire` fires and records a `SKIP`, then queues `advanceRef.current?.()` via two nested `setTimeout`s. During the 1–3 second window before advance fires, the banner is still visible. If the user clicks "Yes, that's it!" before advance fires:
 
@@ -34,10 +36,16 @@ The result: a single question has both SKIP and CORRECT in `historyRef`. The sco
 
 There is no mutual exclusion between timer expiry and the confirm button. A simple boolean guard (e.g., `answeredRef`) set in both paths would fix this.
 
+**Fix applied:** Three ref guards added to `useQuizCore` and `FlipQuiz`:
+- `questionSettledRef` — only the first `recordResult` call per question goes through; subsequent calls are no-ops.
+- `questionGenRef` — incremented on every `advanceQueue()` call; stale `setTimeout` advance callbacks check the generation and bail if it has changed, preventing double-advance.
+- Question timer is stopped immediately when a CLOSE result is received (before the user can interact with the banner), eliminating the race for the common case. The settled flag is the safety net if the timer fired during the API await.
+
 ---
 
 ### 1.2 Double API submission on rapid Enter key / double-click
 **Severity: High | File: `FlipQuiz.jsx`**
+**Status: ✅ RESOLVED**
 
 `handleSubmit` is `async`. The guard at the top is:
 ```js
@@ -48,6 +56,8 @@ if (!answer.trim() || !current || feedback) return
 This applies to all quizzes using `handleSubmit` with an API await and no in-flight guard.
 
 Fix: a `submittingRef` boolean set to `true` before the await and reset after.
+
+**Fix applied:** `submittingRef` in-flight guard added to every quiz page's `handleSubmit`. `beginSubmit()` (exposed from `useQuizCore`, added locally to `FlipQuiz`) returns `false` if a call is already in-flight — the handler returns early. `endSubmit()` is called after the await on CLOSE/WRONG paths (CORRECT paths are gated by `feedback` state and reset by `advanceQueue`). Combined with `questionSettledRef`, the second concurrent submission can neither fire a second API call nor record a second result.
 
 ---
 
@@ -304,6 +314,7 @@ The HOST badge is given to the player at index 0 in the array. This assumes the 
 
 ### 5.1 WebSocket messages published during disconnection are silently dropped
 **Severity: High | File: `useStompClient.js`, `RoomContext.jsx`**
+**Status: ✅ RESOLVED**
 
 ```js
 const publish = useCallback((destination, body) => {
@@ -313,10 +324,13 @@ const publish = useCallback((destination, body) => {
 
 If the STOMP client is temporarily disconnected (e.g., network blip, auto-reconnect in progress), `publish` is a no-op — the answer, join announcement, or game-start message is permanently lost. The STOMP client reconnects after 3 seconds, but there is no queuing or retry mechanism. A player who submits an answer during this window has their answer silently discarded.
 
+**Fix applied:** `pendingPublishes` ref added to `useStompClient`. When `publish` is called while disconnected, the serialized message is pushed to the queue. On `onConnect`, all queued messages are flushed to the server before pending subscriptions are established. The server is responsible for rejecting stale messages (wrong `questionIndex`) if the game has moved on during the disconnection window.
+
 ---
 
 ### 5.2 Pending subscription cleanup removes by topic, not by handler
 **Severity: Medium | File: `useStompClient.js`**
+**Status: ✅ RESOLVED**
 
 ```js
 } else {
@@ -328,6 +342,8 @@ If the STOMP client is temporarily disconnected (e.g., network blip, auto-reconn
 ```
 
 The cleanup function filters by `topic` only. If `setupSubscriptions` in `RoomContext` is called twice before the STOMP client connects (e.g., if `initRoom` is called more than once, or in React StrictMode's double-invoke), both subscriptions for the same topic are pushed to pending. When the first one's cleanup runs, it removes **all** pending entries for that topic — including the second subscription. After reconnection, the second topic (e.g., the personal player channel `/topic/room/{code}/player/{id}`) would never be established. Result: the player misses all server messages sent to their private channel.
+
+**Fix applied:** Cleanup function now uses object identity (`s !== pending`) instead of topic comparison. Each `subscribe()` call creates a unique `pending` object; its cleanup removes only that specific entry.
 
 ---
 
@@ -375,41 +391,21 @@ If the server advances to the next question while the player's answer is in-tran
 
 ### 6.1 Missing `.catch()` on country data fetch in most quiz pages
 **Severity: High | Files: `CitiesQuiz.jsx`, `LanguageQuiz.jsx`, `BordersQuiz.jsx`, `CurrencyQuiz.jsx`, `ShapesQuiz.jsx`**
+**Status: ✅ RESOLVED** (fixed in `useQuizCore` refactor)
 
-All these quizzes load countries in `useEffect` without a `.catch()`:
-```js
-api.getCountries(region).then(data => {
-    ...
-    setLoading(false)
-})
-// ← no .catch()
-```
+All these quizzes load countries in `useEffect` without a `.catch()`. If the API request fails, the component stays on "Loading…" indefinitely with no error message.
 
-If the API request fails (server down, network error, 5xx), the Promise rejection is unhandled. `setLoading` is never called, so the component stays on the "Loading…" screen indefinitely with no error message and no way for the user to retry.
-
-`FlipQuiz.jsx` and `MapQuiz.jsx` correctly handle this with `.catch(e => { setError(e.message); setLoading(false) })`. The other quiz pages should follow the same pattern.
+**Fix applied:** The `useQuizCore` hook (introduced in the structural refactor) includes `.catch(e => { setError(e.message); setLoading(false) })` on the country fetch. All five pages now render the error state when `error` is truthy.
 
 ---
 
 ### 6.2 API methods bypass the shared `request` wrapper — no error handling
 **Severity: Medium | File: `api/client.js`**
+**Status: ✅ RESOLVED**
 
-Three API methods use `fetch` directly without going through the shared `request()` wrapper:
-```js
-submitLanguageAnswer: (countryIso, answer) =>
-    fetch(`${BASE_URL}/api/quiz/language-answer`, {...}).then(r => r.json()),
-submitCurrencyAnswer: (countryIso, answer) =>
-    fetch(`${BASE_URL}/api/quiz/currency-answer`, {...}).then(r => r.json()),
-submitBorderAnswer: (countryIso, answer) =>
-    fetch(`${BASE_URL}/api/quiz/border-answer`, {...}).then(r => r.json()),
-```
+Three API methods used `fetch` directly without going through the shared `request()` wrapper, meaning non-200 responses were parsed silently as JSON and callers received malformed payloads.
 
-Unlike `request()`, these do NOT:
-- Check `res.ok` — a 400 or 500 response is parsed as JSON silently
-- Throw on error responses — callers receive a partial/malformed payload
-- Respect the `Content-Type` fallback (text vs JSON)
-
-If the server returns a non-200 status (e.g., 422 for invalid input), `.json()` on an error body might throw a JSON parse error or return `{result: undefined}`, causing the quiz to silently treat it as WRONG.
+**Fix applied:** `submitLanguageAnswer`, `submitCurrencyAnswer`, and `submitBorderAnswer` now call `request()`, giving them `res.ok` checking, proper error throwing, and consistent JSON/text handling.
 
 ---
 
@@ -591,16 +587,11 @@ A debug `console.log` with room codes and host tokens is present in the start ga
 
 ### 9.1 Six quiz pages duplicate the same timer + advance + session management pattern
 **Severity: Medium | Files: `ShapesQuiz.jsx`, `CitiesQuiz.jsx`, `LanguageQuiz.jsx`, `CurrencyQuiz.jsx`, `BordersQuiz.jsx`, `MapQuiz.jsx`**
+**Status: ✅ RESOLVED**
 
-Each of these pages contains near-identical implementations of:
-- Session timer with `sessionExpiredRef` guard
-- Question timer with `onExpire` → flip → advance chain
-- `advanceRef` pattern
-- `currentRef` and `flippedRef` ref mirrors
-- `gpRef` for gameplay settings
-- The `advance()` function structure
+Each page contained near-identical implementations of session/question timers, advance logic, and ref mirrors. A single bug fix required 7 changes.
 
-`FlipQuiz.jsx` was created to centralize this logic for 5 modes, but the 6 standalone pages duplicate it manually. A bug fix in the session timer expiry logic (e.g., fix for issue 1.1 or 3.1) must be applied in 7 places. This is a maintenance debt that will cause divergence over time.
+**Fix applied:** `useQuizCore` hook extracted as the single source of truth for all shared quiz state. All 6 standalone pages now delegate to it, keeping only mode-specific rendering, API calls, and local state. Bug fixes (like 1.1, 1.2, 6.1) now apply once in the hook and cover all modes automatically.
 
 ---
 
@@ -624,39 +615,39 @@ Multiple multiplayer components use inline `style={{ backgroundColor: '#7C3AED' 
 
 ## 10. Summary Priority Matrix
 
-| # | Issue | Severity | File(s) |
-|---|-------|----------|---------|
-| 1.1 | CLOSE banner + timer expiry = double result record | **High** | FlipQuiz, ShapesQuiz, CitiesQuiz, LanguageQuiz |
-| 1.2 | Rapid Enter/double-click causes duplicate API submission | **High** | FlipQuiz |
-| 6.1 | Missing `.catch()` on data fetch — infinite loading on error | **High** | CitiesQuiz, LanguageQuiz, BordersQuiz, CurrencyQuiz, ShapesQuiz |
-| 5.1 | Published WS messages dropped during reconnection | **High** | useStompClient |
-| 4.1 | FlipCard desyncs on user click due to inline renderFront | **Medium** | FlipCard, FlagsQuiz, CapitalsQuiz |
-| 3.1 | Last result missing from score in synchronous advance | **Medium** | FlipQuiz (handleConfirm) |
-| 2.1 | setInterval timer drift — accumulates over session | **Medium** | useCountdownTimer |
-| 5.2 | Pending subscription cleanup removes wrong entries | **Medium** | useStompClient |
-| 5.3 | GAME_STARTED → LOBBY blocks recovery if QUESTION_STARTED drops | **Medium** | RoomContext |
-| 6.2 | submitLanguage/Currency/BorderAnswer bypass error wrapper | **Medium** | api/client.js |
-| 7.1 | MapQuiz single-attempt vs other modes unlimited-retry | **Medium** | MapQuiz |
-| 7.2 | CurrencyQuiz silently drops CLOSE results | **Medium** | CurrencyQuiz |
-| 1.3 | Timer can fire after Skip in same event loop tick | **Low** | Multiple |
-| 1.4 | BordersQuiz pre-fetch POSTs empty answer (inflates monitoring) | **Low** | BordersQuiz |
-| 2.2 | Session timer doesn't stop question timer before navigate | **Low** | All quiz pages |
-| 2.3 | MapQuiz CLOSE retry restarts question timer (unfair extra time) | **Low** | MapQuiz |
-| 3.2 | `scoreRef.current` stale by one render on session expiry | **Low** | All quiz pages |
-| 3.4 | `getRegion()` not reactive to localStorage changes | **Low** | All quiz pages |
-| 4.2 | `onFlip` not called when autoFlip overrides | **Low** | FlipCard, BordersQuiz |
-| 4.3 | FeedbackBanner onConfirm else-branch unreachable — future trap | **Low** | FlipQuiz, ShapesQuiz, CitiesQuiz, LanguageQuiz |
-| 4.4 | SessionEnd hero hardcoded dark theme — breaks in light mode | **Low** | SessionEnd |
-| 4.5 | SessionEnd useEffect empty deps — fragile stale closure | **Low** | SessionEnd |
-| 4.6 | Lobby HOST badge by array index, not by role | **Low** | Lobby |
-| 5.4 | MapView re-fetches GeoJSON on every question in multiplayer | **Low** | MultiplayerGame |
-| 5.5 | No client-side stale question index guard in multiplayer submit | **Low** | MultiplayerGame |
-| 6.3 | Play Again passes ignored state to quiz routes | **Low** | SessionEnd |
-| 7.4 | CitiesQuiz allows same country to dominate queue | **Low** | CitiesQuiz |
-| 7.5 | Difficulty default differs between singleplayer (5) and multiplayer (2) | **Low** | difficultySettings, RoomContext |
-| 8.1 | No urgency cue that timer continues during CLOSE banner | **Low** | FlipQuiz, others |
-| 8.3 | Spacebar flip blocked when input is focused | **Low** | FlipQuiz |
-| 8.5 | Multiplayer game can start with 1 player | **Low** | Lobby |
-| 8.6 | Debug console.log with host token in production | **Low** | Lobby |
-| 9.1 | Six quiz pages duplicate session/question timer management | **Medium** | All standalone quizzes |
-| 9.3 | Hardcoded `#7C3AED` bypasses theme system | **Low** | Multiplayer pages |
+| # | Issue | Severity | Status | File(s) |
+|---|-------|----------|--------|---------|
+| 1.1 | CLOSE banner + timer expiry = double result record | **High** | ✅ Fixed | FlipQuiz, ShapesQuiz, CitiesQuiz, LanguageQuiz |
+| 1.2 | Rapid Enter/double-click causes duplicate API submission | **High** | ✅ Fixed | All quiz pages |
+| 6.1 | Missing `.catch()` on data fetch — infinite loading on error | **High** | ✅ Fixed | All standalone quiz pages (via useQuizCore) |
+| 5.1 | Published WS messages dropped during reconnection | **High** | ✅ Fixed | useStompClient |
+| 9.1 | Six quiz pages duplicate session/question timer management | **Medium** | ✅ Fixed | All standalone quizzes |
+| 5.2 | Pending subscription cleanup removes wrong entries | **Medium** | ✅ Fixed | useStompClient |
+| 6.2 | submitLanguage/Currency/BorderAnswer bypass error wrapper | **Medium** | ✅ Fixed | api/client.js |
+| 4.1 | FlipCard desyncs on user click due to inline renderFront | **Medium** | Open | FlipCard, FlagsQuiz, CapitalsQuiz |
+| 3.1 | Last result missing from score in synchronous advance | **Medium** | Open | FlipQuiz (handleConfirm) |
+| 2.1 | setInterval timer drift — accumulates over session | **Medium** | Open | useCountdownTimer |
+| 5.3 | GAME_STARTED → LOBBY blocks recovery if QUESTION_STARTED drops | **Medium** | Open | RoomContext |
+| 7.1 | MapQuiz single-attempt vs other modes unlimited-retry | **Medium** | Open | MapQuiz |
+| 7.2 | CurrencyQuiz silently drops CLOSE results | **Medium** | Open | CurrencyQuiz |
+| 1.3 | Timer can fire after Skip in same event loop tick | **Low** | Open | Multiple |
+| 1.4 | BordersQuiz pre-fetch POSTs empty answer (inflates monitoring) | **Low** | Open | BordersQuiz |
+| 2.2 | Session timer doesn't stop question timer before navigate | **Low** | Open | All quiz pages |
+| 2.3 | MapQuiz CLOSE retry restarts question timer (unfair extra time) | **Low** | Open | MapQuiz |
+| 3.2 | `scoreRef.current` stale by one render on session expiry | **Low** | Open | All quiz pages |
+| 3.4 | `getRegion()` not reactive to localStorage changes | **Low** | Open | All quiz pages |
+| 4.2 | `onFlip` not called when autoFlip overrides | **Low** | Open | FlipCard, BordersQuiz |
+| 4.3 | FeedbackBanner onConfirm else-branch unreachable — future trap | **Low** | Open | FlipQuiz, ShapesQuiz, CitiesQuiz, LanguageQuiz |
+| 4.4 | SessionEnd hero hardcoded dark theme — breaks in light mode | **Low** | Open | SessionEnd |
+| 4.5 | SessionEnd useEffect empty deps — fragile stale closure | **Low** | Open | SessionEnd |
+| 4.6 | Lobby HOST badge by array index, not by role | **Low** | Open | Lobby |
+| 5.4 | MapView re-fetches GeoJSON on every question in multiplayer | **Low** | Open | MultiplayerGame |
+| 5.5 | No client-side stale question index guard in multiplayer submit | **Low** | Open | MultiplayerGame |
+| 6.3 | Play Again passes ignored state to quiz routes | **Low** | Open | SessionEnd |
+| 7.4 | CitiesQuiz allows same country to dominate queue | **Low** | Open | CitiesQuiz |
+| 7.5 | Difficulty default differs between singleplayer (5) and multiplayer (2) | **Low** | Open | difficultySettings, RoomContext |
+| 8.1 | No urgency cue that timer continues during CLOSE banner | **Low** | Open | FlipQuiz, others |
+| 8.3 | Spacebar flip blocked when input is focused | **Low** | Open | FlipQuiz |
+| 8.5 | Multiplayer game can start with 1 player | **Low** | Open | Lobby |
+| 8.6 | Debug console.log with host token in production | **Low** | Open | Lobby |
+| 9.3 | Hardcoded `#7C3AED` bypasses theme system | **Low** | Open | Multiplayer pages |

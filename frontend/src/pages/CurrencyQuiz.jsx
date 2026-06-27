@@ -34,6 +34,7 @@ export default function CurrencyQuiz() {
     score, historyRef, recordResult,
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
+    beginSubmit, endSubmit,
   } = useQuizCore({
     mode: 'currency',
     region,
@@ -54,6 +55,7 @@ export default function CurrencyQuiz() {
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
+    if (!beginSubmit()) return
     const res = await api.submitCurrencyAnswer(current.isoA2, answer)
     if (res.result === 'CORRECT') {
       setFlashState('correct')
@@ -64,6 +66,7 @@ export default function CurrencyQuiz() {
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else {
+      endSubmit()
       setAnswer('')
       setFlashState('wrong')
       setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)

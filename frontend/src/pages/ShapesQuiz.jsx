@@ -24,6 +24,7 @@ export default function ShapesQuiz() {
     score, historyRef, submitAnswer, recordResult,
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
+    beginSubmit, endSubmit,
   } = useQuizCore({
     mode: 'shapes',
     region,
@@ -48,6 +49,7 @@ export default function ShapesQuiz() {
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
+    if (!beginSubmit()) return
     const result = await submitAnswer(current.isoA2, answer)
     if (result.result === 'CORRECT') {
       setFlashState('correct')
@@ -57,9 +59,12 @@ export default function ShapesQuiz() {
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
+      endSubmit()
+      questionTimer.stop()
       setFlashState('close')
       setFeedback(result)
     } else {
+      endSubmit()
       setAnswer('')
       setFlashState('wrong')
       setFeedback(null)

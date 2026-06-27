@@ -7,6 +7,7 @@ export function useStompClient() {
   const clientRef = useRef(null)
   const [connected, setConnected] = useState(false)
   const pendingSubscriptions = useRef([])
+  const pendingPublishes = useRef([])  // 5.1: buffer messages sent while disconnected
 
   useEffect(() => {
     const client = new Client({
@@ -14,10 +15,18 @@ export function useStompClient() {
       reconnectDelay: 3000,
       onConnect: () => {
         setConnected(true)
-        pendingSubscriptions.current.forEach(({ topic, handler }) => {
+
+        // 5.1: flush any messages queued during disconnection before subscribing
+        const queued = pendingPublishes.current.splice(0)
+        queued.forEach(({ destination, body }) => {
+          client.publish({ destination, body })
+        })
+
+        // 5.2: drain pending subscriptions (uses splice to avoid mutation during iteration)
+        const subs = pendingSubscriptions.current.splice(0)
+        subs.forEach(({ topic, handler }) => {
           client.subscribe(topic, (frame) => handler(JSON.parse(frame.body)))
         })
-        pendingSubscriptions.current = []
       },
       onDisconnect: () => setConnected(false),
       onStompError: (frame) => console.error('STOMP error', frame),
@@ -37,18 +46,24 @@ export function useStompClient() {
       const sub = client.subscribe(topic, (frame) => handler(JSON.parse(frame.body)))
       return () => sub.unsubscribe()
     } else {
-      pendingSubscriptions.current.push({ topic, handler })
+      // 5.2: use object identity for cleanup so multiple pending subs on the same
+      // topic don't accidentally remove each other
+      const pending = { topic, handler }
+      pendingSubscriptions.current.push(pending)
       return () => {
-        pendingSubscriptions.current = pendingSubscriptions.current.filter(s => s.topic !== topic)
+        pendingSubscriptions.current = pendingSubscriptions.current.filter(s => s !== pending)
       }
     }
   }, [])
 
   const publish = useCallback((destination, body) => {
-    clientRef.current?.publish({
-      destination,
-      body: JSON.stringify(body),
-    })
+    const serialized = JSON.stringify(body)
+    if (clientRef.current?.connected) {
+      clientRef.current.publish({ destination, body: serialized })
+    } else {
+      // 5.1: queue the message; it will be sent as soon as the connection restores
+      pendingPublishes.current.push({ destination, body: serialized })
+    }
   }, [])
 
   return { connected, subscribe, publish }

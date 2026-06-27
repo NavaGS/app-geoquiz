@@ -56,6 +56,11 @@ export function useQuizCore({
   const sessionExpiredRef = useRef(false)
   const savePersonalBestRef = useRef(null)
 
+  // ── Per-question guards (fix 1.1 + 1.2) ─────────────────────────────────────
+  const questionSettledRef = useRef(false) // prevents double-record per question
+  const questionGenRef = useRef(0)         // invalidates stale setTimeout advance callbacks
+  const submittingRef = useRef(false)      // in-flight API call guard
+
   useEffect(() => { currentRef.current = current }, [current])
   useEffect(() => { flippedRef.current = flipped }, [flipped])
 
@@ -65,16 +70,40 @@ export function useQuizCore({
   useEffect(() => { scoreRef.current = score }, [score])
   useEffect(() => { savePersonalBestRef.current = savePersonalBest }, [savePersonalBest])
 
-  // Default question timer expire: record skip, flip card, then advance
+  // Settled wrapper — only the first result per question goes through
+  const settledRecord = useCallback((iso, type, canonical, userAnswer, card) => {
+    if (questionSettledRef.current) return
+    questionSettledRef.current = true
+    recordResult(iso, type, canonical, userAnswer, card)
+  }, [recordResult])
+
+  // Submit-in-flight guard — call beginSubmit() before an async API call,
+  // endSubmit() after the await resolves (on non-CORRECT paths). advanceQueue
+  // resets the flag on question advance so CORRECT paths don't need endSubmit.
+  function beginSubmit() {
+    if (submittingRef.current) return false
+    submittingRef.current = true
+    return true
+  }
+  function endSubmit() { submittingRef.current = false }
+
+  // Default question timer expire: record skip, flip card, then advance.
+  // Gen check prevents this from advancing a question that was already settled
+  // by user action (e.g. CLOSE confirm firing before the 3 s delay elapses).
   const defaultQuestionExpire = useCallback(() => {
     const c = currentRef.current
     if (!c) return
-    recordResult(getIso(c), 'SKIP', getCanonical?.(c) ?? null, null, getCard?.(c) ?? null)
+    const gen = questionGenRef.current
+    settledRecord(getIso(c), 'SKIP', getCanonical?.(c) ?? null, null, getCard?.(c) ?? null)
     setTimeout(() => {
+      if (questionGenRef.current !== gen) return
       setFlipped(true)
-      setTimeout(() => advanceRef.current?.(), 2000)
+      setTimeout(() => {
+        if (questionGenRef.current !== gen) return
+        advanceRef.current?.()
+      }, 2000)
     }, 1000)
-  }, [getIso, getCanonical, getCard, recordResult])
+  }, [getIso, getCanonical, getCard, settledRecord])
 
   const sessionTimer = useCountdownTimer({
     seconds: 60,
@@ -85,13 +114,13 @@ export function useQuizCore({
       const last = historyRef.current[historyRef.current.length - 1]
       const iso = c ? getIso(c) : null
       const unanswered = iso && (!last || last.countryIso !== iso)
-      if (unanswered) recordResult(iso, 'SKIP', getCanonical?.(c) ?? null, null, getCard?.(c) ?? null)
+      if (unanswered) settledRecord(iso, 'SKIP', getCanonical?.(c) ?? null, null, getCard?.(c) ?? null)
       const isNewBest = savePersonalBestRef.current?.() ?? false
       const sessionScore = unanswered
         ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 }
         : scoreRef.current
       navigate('/session-end', { state: { score: sessionScore, mode, region, isNewBest, results: historyRef.current } })
-    }, [mode, region, getIso, getCanonical, getCard, recordResult, navigate]),
+    }, [mode, region, getIso, getCanonical, getCard, settledRecord, navigate]),
   })
 
   const questionTimer = useCountdownTimer({
@@ -138,6 +167,11 @@ export function useQuizCore({
    * mode-specific local state (answer, feedback, flashState, etc.).
    */
   const advanceQueue = () => {
+    // Reset per-question guards so the next question starts clean
+    questionSettledRef.current = false
+    submittingRef.current = false
+    questionGenRef.current += 1   // invalidate any in-flight delayed callbacks
+
     questionTimer.stop()
     const wasFlipped = flippedRef.current
     setFlipped(false)
@@ -165,11 +199,14 @@ export function useQuizCore({
     // Flip state (used by FlipCard)
     flipped, setFlipped, flippedRef,
     // Quiz session (scores, history, answer submission)
-    score, historyRef, submitAnswer, recordResult, savePersonalBest,
+    // recordResult is the settled version — only records once per question
+    score, historyRef, submitAnswer, recordResult: settledRecord, savePersonalBest,
+    // Submit-in-flight guard — wrap async API calls with beginSubmit/endSubmit
+    beginSubmit, endSubmit,
     // Timers
     sessionTimer, questionTimer,
     // Refs exposed for component use
-    gpRef, currentRef, advanceRef, scoreRef,
+    gpRef, currentRef, advanceRef, scoreRef, questionGenRef,
     // Queue advancement — wrap this in the component's advance()
     advanceQueue,
   }
