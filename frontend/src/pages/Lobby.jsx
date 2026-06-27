@@ -15,7 +15,7 @@ const MODE_META = {
 export default function Lobby() {
   const { code } = useParams()
   const navigate = useNavigate()
-  const { players, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts, isHost, phase, initRoom, announceJoin, announceLeave, startGame, hostToken, playerId, connected } = useRoom()
+  const { players, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts, isHost, phase, gameStartError, initRoom, announceJoin, announceLeave, startGame, hostToken, playerId, connected } = useRoom()
   const [copied, setCopied] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState(null)
@@ -58,12 +58,17 @@ export default function Lobby() {
     }
   }, [connected, playerId, code]) // eslint-disable-line
 
-  // Navigate to game when it starts
+  // Navigate to game when first question arrives
   useEffect(() => {
     if (phase === 'QUESTION') {
       navigate(`/game/${code}`, { replace: true })
     }
   }, [phase]) // eslint-disable-line
+
+  // If QUESTION_STARTED never arrived after GAME_STARTED, reset the button state
+  useEffect(() => {
+    if (gameStartError) setStarting(false)
+  }, [gameStartError])
 
   useEffect(() => {
     return () => {
@@ -153,7 +158,9 @@ export default function Lobby() {
         </div>
       )}
 
-      {error && <p className="text-sm text-error mb-4">{error}</p>}
+      {(error || gameStartError) && (
+        <p className="text-sm text-error mb-4">{error || gameStartError}</p>
+      )}
 
       {isHost && (
         <button

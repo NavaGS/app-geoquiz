@@ -3,10 +3,13 @@ import { useState, useEffect, useCallback } from 'react'
 export default function FlipCard({ front, back, onFlip, autoFlip = false, flashState }) {
   const [flipped, setFlipped] = useState(false)
 
-  // Flip to match autoFlip, and reset when question content changes
+  // Drive flip state from autoFlip only — the parent's advance() resets autoFlip
+  // to false on each new question, which is the sole reliable trigger for un-flipping.
+  // Including `front` caused cards to snap back whenever frontContent was recomputed
+  // (e.g. every timer tick in FlagsQuiz/CapitalsQuiz due to inline renderFront refs).
   useEffect(() => {
     setFlipped(autoFlip)
-  }, [autoFlip, front])
+  }, [autoFlip])
 
   const flip = useCallback(() => {
     setFlipped(f => !f)

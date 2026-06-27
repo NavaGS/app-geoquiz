@@ -1,7 +1,7 @@
 # Frontend Potential Issues & Business Logic Analysis
 
 > Generated: 2026-06-27  
-> Last updated: 2026-06-28 — issues 1.1, 1.2, 5.1, 5.2, 6.1, 6.2, 9.1 resolved  
+> Last updated: 2026-06-28 — issues 1.1, 1.2, 2.1, 3.1, 4.1, 5.1, 5.2, 5.3, 6.1, 6.2, 7.2, 9.1 resolved; 7.1 confirmed deliberate  
 > Scope: Full source review — all quiz modes, multiplayer, hooks, context, and utilities
 
 ---
@@ -91,20 +91,11 @@ A dedicated read-only endpoint (GET `/api/borders/{iso}`) would be cleaner.
 
 ### 2.1 `setInterval` drift accumulates over time
 **Severity: Medium | File: `useCountdownTimer.js`**
+**Status: ✅ RESOLVED**
 
-```js
-intervalRef.current = setInterval(tick, 1000)
-```
+`setInterval` ticks are "at least N ms late" per firing, causing drift to accumulate over a 60-second session. Background-tab throttling could cause multi-second jumps on resume.
 
-`setInterval` does not guarantee exactly 1000ms intervals. The JavaScript engine fires it "at least 1000ms after the last call", meaning each tick is slightly late. On a 60-second session, this can accumulate 1–3 seconds of drift. Browsers also throttle background tabs to ≥1s intervals (and in some cases ≥1 minute for deeply backgrounded tabs), which can cause large jumps when returning to the tab.
-
-The industry-standard fix is to use `Date.now()` comparisons:
-```js
-const elapsed = Date.now() - startTimeRef.current
-const remaining = Math.max(0, totalMs - elapsed)
-```
-
-This is especially relevant for the multiplayer `useServerTimer` which already uses `Date.now()` correctly — the solo timer should match that approach for consistency.
+**Fix applied:** `useCountdownTimer` now anchors on an absolute `endTimeRef` set to `Date.now() + secs * 1000` at start time. Each tick computes `Math.ceil((endTimeRef.current - Date.now()) / 1000)` — accurate regardless of late ticks. The poll interval is 200 ms (down from 1000 ms) so expiry fires within 200 ms of the real zero-crossing; React state is only updated when the displayed integer second changes, keeping the render rate at ~1 Hz. Background-tab recovery is automatic: the first tick after the browser throttle releases immediately corrects the displayed time.
 
 ---
 
@@ -135,20 +126,11 @@ When a player gets a CLOSE result and clicks "Retype", the question timer is res
 
 ### 3.1 Score passed to session-end can miss the last result in synchronous advance paths
 **Severity: Medium | Files: `FlipQuiz.jsx` (handleConfirm), standalone quizzes**
+**Status: ✅ RESOLVED**
 
-In `FlipQuiz.handleConfirm`, the else-branch (non-CLOSE):
-```js
-recordResult(getQuestion(current).iso, 'SKIP', ...)
-advanceRef.current?.()  // called immediately, no setTimeout
-```
+`FlipQuiz.advance()` was a `useCallback([score, ...])` that closed over the `score` state value at render time. When `recordResult` was called synchronously and `advance` fired in the same call stack (no `setTimeout`), the `score` captured in the closure was one update behind.
 
-`recordResult` schedules a `setScore` update (async React state). `advance` is called synchronously in the same call stack. `advance` in FlipQuiz is a `useCallback` with `[score, ...]` as deps — it captured the `score` at its last render. Since `setScore` hasn't re-rendered yet, the `score` passed to `navigate('/session-end', { state: { score, ... } })` is **missing the last recorded skip**.
-
-The 700ms `setTimeout` paths avoid this issue (score is updated before the callback fires). Only the immediate `advanceRef.current?.()` path is affected, which appears in:
-- `FlipQuiz.handleConfirm` else-branch
-- Some `FeedbackBanner.onConfirm` implementations in standalone quizzes
-
-The session-end accuracy will show one fewer skip than actually occurred.
+**Fix applied:** `advance()` now reads `scoreRef.current` (the mutable ref that mirrors `score`, updated via `useEffect`) instead of the stale closure value. `score` removed from the `useCallback` dep array. The `useQuizCore` hook already used this pattern correctly; this aligns `FlipQuiz` with it.
 
 ---
 
@@ -204,30 +186,17 @@ Called once during component rendering. If a user could change their region sett
 
 ### 4.1 FlipCard internal `flipped` state desyncs from `autoFlip` on user click
 **Severity: Medium | File: `FlipCard.jsx`**
+**Status: ✅ RESOLVED**
 
-`FlipCard` has its OWN internal `flipped` state, controllable both via the `autoFlip` prop (forced by parent) and by user click (`flip()` toggle). The sync mechanism is:
-
+`FlipCard` had its OWN internal `flipped` state. The sync effect included `front` as a dependency:
 ```js
-useEffect(() => {
-    setFlipped(autoFlip)
-}, [autoFlip, front])
+useEffect(() => { setFlipped(autoFlip) }, [autoFlip, front])
 ```
+In `FlagsQuiz` and `CapitalsQuiz`, `renderFront` was an inline arrow function — new reference every render — causing `frontContent` to recompute on every timer tick. The effect fired on every render, calling `setFlipped(false)` and immediately snapping back any card the user had clicked to peek.
 
-The `front` dependency causes the effect to fire whenever the front card content changes. In `FlagsQuiz.jsx` and `CapitalsQuiz.jsx`, `renderFront` is an **inline arrow function** passed as a prop:
-```jsx
-<FlipQuiz
-    renderFront={c => <div>...</div>}  // new reference every render
-    ...
-```
-In `FlipQuiz.jsx`:
-```js
-const frontContent = useMemo(() => current ? renderFront(current) : null, [current, renderFront])
-```
-Since `renderFront` is a new function reference on every render, `frontContent` is recomputed on every render, meaning `FlipCard.front` changes on every render.
-
-**Consequence:** When the user clicks the card to flip it (FlipCard toggles its internal `flipped` to true, but parent's `autoFlip` stays false), the next render (triggered by any state change — typing in the input, timer ticking, etc.) fires the useEffect with `autoFlip=false` and a new `front`, calling `setFlipped(false)`. **The card immediately unflips.** Clicking the card to peek at the answer is non-functional in FlagsQuiz and CapitalsQuiz.
-
-The `autoFlip`/`onFlip` design conflates two separate concerns: "force flip" (from parent) and "allow user flip" (from click). These should either be fully controlled (remove internal state, flip only via parent) or fully uncontrolled (remove the `front` dep from the sync effect).
+**Fix applied (two-part):**
+1. `FlagsQuiz.jsx` and `CapitalsQuiz.jsx`: All prop functions (`renderFront`, `renderBack`, `filterFn`, `getQuestion`, `getCanonical`) extracted to module scope. Being pure functions of their `c` argument with no component state, they need no closure and are stable across renders.
+2. `FlipCard.jsx`: Removed `front` from the sync effect's dep array. `autoFlip` alone is the authoritative flip trigger — the parent's `advance()` resets it to `false` on each new question, which is the correct signal to un-flip.
 
 ---
 
@@ -349,18 +318,14 @@ The cleanup function filters by `topic` only. If `setupSubscriptions` in `RoomCo
 
 ### 5.3 `GAME_STARTED` reducer action resets phase to `'LOBBY'`
 **Severity: Medium | File: `RoomContext.jsx`**
+**Status: ✅ RESOLVED**
 
-```js
-case 'GAME_STARTED':
-    return { ...state, phase: 'LOBBY' }
-```
+`GAME_STARTED` previously re-set `phase` to `'LOBBY'`, making it semantically indistinguishable from the pre-game waiting state. If `QUESTION_STARTED` was dropped or delayed, the client was permanently stuck with no recovery path.
 
-When the server sends `GAME_STARTED`, the reducer explicitly resets phase to `'LOBBY'`. Navigation in `Lobby.jsx` only triggers on `phase === 'QUESTION'`. If the server's `QUESTION_STARTED` message is delayed, dropped, or never arrives, the client is permanently stuck on the "Game starting…" loading screen. There is no timeout, no fallback, and no way for the player to recover without a page refresh. The `MultiplayerGame.jsx` loading state reinforces this:
-```jsx
-if (phase === 'LOBBY' || !question) {
-    return <div>Game starting…</div>
-}
-```
+**Fix applied (three parts):**
+1. `GAME_STARTED` now transitions to `phase: 'STARTING'` — semantically distinct from `'LOBBY'`.
+2. `RoomContext` starts an 8-second timeout when `GAME_STARTED` arrives. If `QUESTION_STARTED` does not arrive in time, a `GAME_START_TIMEOUT` action resets to `phase: 'LOBBY'` and sets `gameStartError` in state. `Lobby.jsx` watches `gameStartError` and resets the "Starting…" spinner, showing the error inline so the host can retry.
+3. `MultiplayerGame.jsx`'s loading guard now checks `phase === 'STARTING'` in addition to `'LOBBY'`, so a direct-URL navigation during the start window shows the spinner rather than a blank screen.
 
 ---
 
@@ -428,54 +393,21 @@ This navigates with `{ state: { region, timer: 30 } }` in router state. None of 
 
 ### 7.1 MapQuiz records WRONG on incorrect answers; all other modes allow retries
 **Severity: Medium | Files: `MapQuiz.jsx` vs all others**
+**Status: Deliberate design decision — no code change**
 
-In every quiz mode except MapQuiz, an incorrect submission simply clears the input for a retry — no result is recorded:
-```js
-// FlipQuiz / ShapesQuiz / LanguageQuiz / CitiesQuiz / BordersQuiz
-} else {
-    setAnswer('')
-    setFlashState('wrong')
-    setFeedback(null)
-    // ← no recordResult call
-}
-```
+MapQuiz is intentionally harder: wrong = immediate advance + country reveal (single-attempt). This models the real-world difficulty of identifying a country purely from its map position. All other modes show the answer on the back of a flip card and allow unlimited retries, fitting a flashcard-learning metaphor.
 
-MapQuiz is different:
-```js
-} else {
-    setFlashState('wrong')
-    setRevealName(current.nameCommon)
-    recordResult(current.isoA2, 'WRONG', current.nameCommon, answer, null)  // ← recorded!
-    setTimeout(() => advanceRef.current?.(), 2000)
-}
-```
-
-MapQuiz also has a CLOSE path via `handleRetry`. This means:
-- MapQuiz is single-attempt per country (wrong = advance)
-- All other modes are unlimited-retry (only skip records a non-correct)
-- The `wrong` counter in the score bar will always be 0 for non-map modes
-- Session-end accuracy calculations differ fundamentally between modes
-- Users who mix modes may find MapQuiz unexpectedly "harsh"
+The inconsistency in the `wrong` score counter (always 0 in non-map modes) is a display limitation — non-map modes never call `recordResult(WRONG)` by design. If a unified wrong-count display is needed, a future pass should either normalise the result types or remove the counter from modes where it has no meaning.
 
 ---
 
 ### 7.2 CurrencyQuiz silently drops CLOSE results from the API
 **Severity: Medium | File: `CurrencyQuiz.jsx`**
+**Status: ✅ RESOLVED**
 
-```js
-async function handleSubmit() {
-    const res = await api.submitCurrencyAnswer(current.isoA2, answer)
-    if (res.result === 'CORRECT') { ... }
-    else {
-        // ← CLOSE treated identically to WRONG, no feedback given
-        setAnswer('')
-        setFlashState('wrong')
-        ...
-    }
-}
-```
+CurrencyQuiz treated `CLOSE` identically to `WRONG` — wrong flash, no hint, no confirmation. Every other fuzzy-matching mode shows the CLOSE banner.
 
-If the currency API returns `CLOSE` (e.g., "British Pound" vs "Pound Sterling"), the player receives a wrong-flash and has to retype with no hint. All other quiz modes with fuzzy matching (flags, capitals, shapes, map, language) show the CLOSE banner with the hint and a confirmation option. CurrencyQuiz is the only mode that silently ignores CLOSE.
+**Fix applied:** Added `CLOSE` branch to `handleSubmit` (stop timer, set CLOSE flash + feedback) and wired `FeedbackBanner` into the CurrencyQuiz render tree with the same `onConfirm`/`onRetry` pattern used by ShapesQuiz, LanguageQuiz, and CitiesQuiz. Currency CLOSE now records `CORRECT` on confirm and allows retype on retry, consistent with all other modes.
 
 ---
 
@@ -624,12 +556,12 @@ Multiple multiplayer components use inline `style={{ backgroundColor: '#7C3AED' 
 | 9.1 | Six quiz pages duplicate session/question timer management | **Medium** | ✅ Fixed | All standalone quizzes |
 | 5.2 | Pending subscription cleanup removes wrong entries | **Medium** | ✅ Fixed | useStompClient |
 | 6.2 | submitLanguage/Currency/BorderAnswer bypass error wrapper | **Medium** | ✅ Fixed | api/client.js |
-| 4.1 | FlipCard desyncs on user click due to inline renderFront | **Medium** | Open | FlipCard, FlagsQuiz, CapitalsQuiz |
-| 3.1 | Last result missing from score in synchronous advance | **Medium** | Open | FlipQuiz (handleConfirm) |
-| 2.1 | setInterval timer drift — accumulates over session | **Medium** | Open | useCountdownTimer |
-| 5.3 | GAME_STARTED → LOBBY blocks recovery if QUESTION_STARTED drops | **Medium** | Open | RoomContext |
-| 7.1 | MapQuiz single-attempt vs other modes unlimited-retry | **Medium** | Open | MapQuiz |
-| 7.2 | CurrencyQuiz silently drops CLOSE results | **Medium** | Open | CurrencyQuiz |
+| 4.1 | FlipCard desyncs on user click due to inline renderFront | **Medium** | ✅ Fixed | FlipCard, FlagsQuiz, CapitalsQuiz |
+| 3.1 | Last result missing from score in synchronous advance | **Medium** | ✅ Fixed | FlipQuiz (handleConfirm) |
+| 2.1 | setInterval timer drift — accumulates over session | **Medium** | ✅ Fixed | useCountdownTimer |
+| 5.3 | GAME_STARTED → LOBBY blocks recovery if QUESTION_STARTED drops | **Medium** | ✅ Fixed | RoomContext, Lobby, MultiplayerGame |
+| 7.1 | MapQuiz single-attempt vs other modes unlimited-retry | **Medium** | Deliberate | MapQuiz |
+| 7.2 | CurrencyQuiz silently drops CLOSE results | **Medium** | ✅ Fixed | CurrencyQuiz |
 | 1.3 | Timer can fire after Skip in same event loop tick | **Low** | Open | Multiple |
 | 1.4 | BordersQuiz pre-fetch POSTs empty answer (inflates monitoring) | **Low** | Open | BordersQuiz |
 | 2.2 | Session timer doesn't stop question timer before navigate | **Low** | Open | All quiz pages |

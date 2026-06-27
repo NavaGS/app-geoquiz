@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
+import FeedbackBanner from '../components/FeedbackBanner.jsx'
 import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
 import { useQuizCore } from '../hooks/useQuizCore.js'
@@ -65,6 +66,11 @@ export default function CurrencyQuiz() {
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
+    } else if (res.result === 'CLOSE') {
+      endSubmit()
+      questionTimer.stop()
+      setFlashState('close')
+      setFeedback({ result: 'CLOSE', canonicalName: res.canonicalAnswer })
     } else {
       endSubmit()
       setAnswer('')
@@ -116,6 +122,19 @@ export default function CurrencyQuiz() {
           placeholder="Type a country name…"
           flash={flashState}
           focusKey={qIndex}
+        />
+        <FeedbackBanner
+          result={feedback?.result}
+          canonicalName={feedback?.canonicalName}
+          onConfirm={() => {
+            questionTimer.stop()
+            if (feedback?.result === 'CLOSE') {
+              recordResult(current.isoA2, 'CORRECT', feedback.canonicalName, answer, null)
+              setFlipped(true)
+              setTimeout(() => advanceRef.current?.(), 700)
+            }
+          }}
+          onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
       </main>
     </div>

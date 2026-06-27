@@ -139,7 +139,9 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       const next = prev.slice(1)
       if (next.length === 0) {
         const isNewBest = savePersonalBest()
-        navigate('/session-end', { state: { score, mode, region, isNewBest, results: historyRef.current } })
+        // Use scoreRef.current — the useState `score` closure may be one render behind
+        // when this callback fires synchronously (before the setScore update has batched).
+        navigate('/session-end', { state: { score: scoreRef.current, mode, region, isNewBest, results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -150,7 +152,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     } else {
       updateQueue()
     }
-  }, [score, mode, region, savePersonalBest, navigate, questionTimer])
+  }, [mode, region, savePersonalBest, navigate, questionTimer])
 
   useEffect(() => { advanceRef.current = advance }, [advance])
 

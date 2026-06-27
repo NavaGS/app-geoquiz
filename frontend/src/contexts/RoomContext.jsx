@@ -18,12 +18,15 @@ const initialState = {
   isHost: false,
   hostToken: null,
   // game
-  phase: 'LOBBY', // LOBBY | QUESTION | SUBMITTED | RESULTS | ENDED
+  // LOBBY | STARTING | QUESTION | SUBMITTED | RESULTS | ENDED
+  // STARTING = game has been initiated but first QUESTION_STARTED has not yet arrived
+  phase: 'LOBBY',
   question: null,  // { questionIndex, isoA2, flagUrl, countryName, durationSeconds, serverStartTimeMs, totalQuestions }
   answerResult: null, // { correct, points, canonicalAnswer }
   leaderboard: [],
   finalLeaderboard: [],
   correctAnswer: null,
+  gameStartError: null, // set if QUESTION_STARTED never arrives after GAME_STARTED
 }
 
 function reducer(state, action) {
@@ -43,9 +46,14 @@ function reducer(state, action) {
         responseAttempts: action.payload.responseAttempts,
       }
     case 'GAME_STARTED':
-      return { ...state, phase: 'LOBBY' }
+      // Transition to a distinct STARTING phase so Lobby can distinguish
+      // "waiting for players" from "waiting for first question".
+      return { ...state, phase: 'STARTING', gameStartError: null }
     case 'QUESTION_STARTED':
-      return { ...state, phase: 'QUESTION', question: action.payload, answerResult: null, correctAnswer: null }
+      return { ...state, phase: 'QUESTION', question: action.payload, answerResult: null, correctAnswer: null, gameStartError: null }
+    case 'GAME_START_TIMEOUT':
+      // QUESTION_STARTED never arrived — let the user recover by resetting to LOBBY.
+      return { ...state, phase: 'LOBBY', gameStartError: 'Game start timed out — please try again.' }
     case 'ANSWER_RESULT':
       // Unlimited mode: wrong answer keeps the input active so the player can retry
       if (state.responseAttempts === 'unlimited' && action.payload.correct === false) {
@@ -65,13 +73,25 @@ export function RoomProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
   const { connected, subscribe, publish } = useStompClient()
   const subscriptionsRef = useRef([])
+  const gameStartTimeoutRef = useRef(null)
 
   const setupSubscriptions = useCallback((roomCode, playerId) => {
+    clearTimeout(gameStartTimeoutRef.current)
     subscriptionsRef.current.forEach(unsub => unsub())
     subscriptionsRef.current = []
 
     const roomUnsub = subscribe(`/topic/room/${roomCode}`, (msg) => {
       dispatch({ type: msg.type, payload: msg })
+      if (msg.type === 'GAME_STARTED') {
+        // Start a recovery window — if QUESTION_STARTED doesn't arrive within
+        // 8 seconds the client dispatches a timeout so the host can retry.
+        clearTimeout(gameStartTimeoutRef.current)
+        gameStartTimeoutRef.current = setTimeout(() => {
+          dispatch({ type: 'GAME_START_TIMEOUT' })
+        }, 8000)
+      } else if (msg.type === 'QUESTION_STARTED') {
+        clearTimeout(gameStartTimeoutRef.current)
+      }
     })
 
     const playerUnsub = subscribe(`/topic/room/${roomCode}/player/${playerId}`, (msg) => {
@@ -82,7 +102,10 @@ export function RoomProvider({ children }) {
   }, [subscribe])
 
   useEffect(() => {
-    return () => subscriptionsRef.current.forEach(unsub => unsub?.())
+    return () => {
+      subscriptionsRef.current.forEach(unsub => unsub?.())
+      clearTimeout(gameStartTimeoutRef.current)
+    }
   }, [])
 
   const initRoom = useCallback(({ roomCode, playerId, displayName, isHost, hostToken, quizMode, region, difficultyRating, difficultyMode, maxQuestions, questionDurationSeconds, responseAttempts }) => {
@@ -116,7 +139,7 @@ export function RoomProvider({ children }) {
 
   return (
     <RoomContext.Provider value={{
-      ...state,
+      ...state,          // includes gameStartError
       connected,
       initRoom,
       announceJoin,

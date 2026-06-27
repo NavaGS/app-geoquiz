@@ -219,7 +219,7 @@ export default function MultiplayerGame() {
     )
   }
 
-  if (phase === 'LOBBY' || !question) {
+  if (phase === 'LOBBY' || phase === 'STARTING' || !question) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="text-center">
