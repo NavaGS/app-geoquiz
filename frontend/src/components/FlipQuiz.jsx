@@ -12,7 +12,7 @@ import { getDifficultySettings, difficultyFilter } from '../utils/difficultySett
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
 import { getRegion } from '../utils/regionSettings.js'
 
-export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn, modeName, modeLabel }) {
+export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, renderBack, getQuestion, getCanonical, questionKey, filterFn, modeName, modeLabel }) {
   const navigate = useNavigate()
   const region = getRegion()
 
@@ -30,7 +30,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
   const inputRef = useRef()
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode, evalMode, region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode, evalMode, region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   // ── Session countdown timer ─────────────────────────────────────────────────
@@ -40,9 +40,15 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     onExpire: useCallback(() => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const currentISO = c ? (getQuestion ? getQuestion(c)?.iso : c.isoA2) : null
+      const unanswered = currentISO && (!last || last.countryIso !== currentISO)
+      if (unanswered) recordResult(currentISO, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode, region, isNewBest } })
-    }, [savePersonalBest, navigate, mode, region]),
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode, region, isNewBest, results: historyRef.current } })
+    }, [savePersonalBest, navigate, mode, region, getQuestion, getCanonical, recordResult]),
   })
 
   // ── Per-question timer ──────────────────────────────────────────────────────
@@ -58,12 +64,12 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       const c = currentRef.current
       if (!c) return
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
-      recordResult(iso, 'SKIP', null)
+      recordResult(iso, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
       setTimeout(() => {
         setFlipped(true)
         setTimeout(() => advanceRef.current?.(), 2000)
       }, 1000)
-    }, [recordResult, getQuestion]),
+    }, [recordResult, getQuestion, getCanonical]),
   })
 
   // ── Load countries ──────────────────────────────────────────────────────────
@@ -115,7 +121,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       const next = prev.slice(1)
       if (next.length === 0) {
         const isNewBest = savePersonalBest()
-        navigate('/session-end', { state: { score, mode, region, isNewBest } })
+        navigate('/session-end', { state: { score, mode, region, isNewBest, results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -139,7 +145,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       setFlashState('correct')
       setFeedback(result)
       questionTimer.stop()
-      recordResult(question.iso, 'CORRECT', result.canonicalName)
+      recordResult(question.iso, 'CORRECT', result.canonicalName, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
@@ -157,12 +163,12 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     if (!feedback) return
     questionTimer.stop()
     if (feedback.result === 'CLOSE') {
-      recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName)
+      recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else {
-      recordResult(getQuestion(current).iso, 'SKIP', null)
-      advance()
+      recordResult(getQuestion(current).iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
+      advanceRef.current?.()
     }
   }
 
@@ -175,7 +181,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
 
   function handleSkip() {
     questionTimer.stop()
-    recordResult(getQuestion(current)?.iso, 'SKIP', null)
+    recordResult(getQuestion(current)?.iso, 'SKIP', getCanonical ? getCanonical(current) : null, null, null)
     setFlipped(true)
     setTimeout(() => advanceRef.current?.(), 2000)
   }

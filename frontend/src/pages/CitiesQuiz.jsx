@@ -28,7 +28,7 @@ export default function CitiesQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'cities', region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'cities', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -37,8 +37,13 @@ export default function CitiesQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.country.isoA2)
+      if (unanswered) recordResult(c.country.isoA2, 'SKIP', c.country.nameCommon, null, { cityName: c.cityName })
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'cities', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'cities', region, isNewBest, results: historyRef.current } })
     },
   })
 
@@ -53,7 +58,7 @@ export default function CitiesQuiz() {
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.country.isoA2, 'SKIP', null)
+      recordResult(c.country.isoA2, 'SKIP', c.country.nameCommon, null, { cityName: c.cityName })
       setTimeout(() => {
         setFlipped(true)
         setTimeout(() => advanceRef.current?.(), 2000)
@@ -112,7 +117,7 @@ export default function CitiesQuiz() {
     const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'cities', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'cities', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -129,7 +134,7 @@ export default function CitiesQuiz() {
       setFlashState('correct')
       setFeedback(result)
       questionTimer.stop()
-      recordResult(current.country.isoA2, 'CORRECT', result.canonicalName)
+      recordResult(current.country.isoA2, 'CORRECT', result.canonicalName, answer, { cityName: current.cityName })
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
@@ -191,7 +196,7 @@ export default function CitiesQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.country.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.country.isoA2, 'SKIP', current.country.nameCommon, null, { cityName: current.cityName }); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type the country name…"
           flash={flashState}
@@ -204,8 +209,8 @@ export default function CitiesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
-            else { recordResult(current.country.isoA2, 'SKIP', null); advance() }
+            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName, answer, { cityName: current.cityName }); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
+            else { recordResult(current.country.isoA2, 'SKIP', current.country.nameCommon, null, { cityName: current.cityName }); advanceRef.current?.() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />

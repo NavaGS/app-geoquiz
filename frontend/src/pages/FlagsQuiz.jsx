@@ -8,6 +8,7 @@ export default function FlagsQuiz() {
       accentColor="#1B3FE4"
       filterFn={c => !!c.flagPngUrl}
       getQuestion={c => ({ iso: c.isoA2, question: c.nameCommon })}
+      getCanonical={c => c.nameCommon}
       renderFront={c => (
         <div className="flex flex-col items-center gap-3">
           <p className="text-xs text-muted font-medium uppercase tracking-widest">Which country is this flag?</p>

@@ -29,7 +29,7 @@ export default function BordersQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, recordResult, savePersonalBest } = useQuizSession({ mode: 'borders', region })
+  const { score, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'borders', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -38,8 +38,13 @@ export default function BordersQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.isoA2)
+      if (unanswered) recordResult(c.isoA2, 'SKIP', null, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'borders', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'borders', region, isNewBest, results: historyRef.current } })
     },
   })
 
@@ -118,7 +123,7 @@ export default function BordersQuiz() {
       setQueue(prev => {
         const next = prev.slice(1)
         if (next.length === 0) {
-          navigate('/session-end', { state: { score, mode: 'borders', region, isNewBest: savePersonalBest() } })
+          navigate('/session-end', { state: { score, mode: 'borders', region, isNewBest: savePersonalBest(), results: historyRef.current } })
           return prev
         }
         setCurrent(next[0])
@@ -138,7 +143,7 @@ export default function BordersQuiz() {
       setFlashState('correct')
       const fb = { result: 'CORRECT', canonicalName: res.canonicalAnswer, borderNames }
       setFeedback(fb)
-      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
+      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else {

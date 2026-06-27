@@ -28,7 +28,7 @@ export default function CurrencyQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, recordResult, savePersonalBest } = useQuizSession({ mode: 'currency', region })
+  const { score, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'currency', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -37,8 +37,13 @@ export default function CurrencyQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.isoA2)
+      if (unanswered) recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'currency', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'currency', region, isNewBest, results: historyRef.current } })
     },
   })
 
@@ -53,7 +58,7 @@ export default function CurrencyQuiz() {
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.isoA2, 'SKIP', null)
+      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       setTimeout(() => {
         setFlipped(true)
         setTimeout(() => advanceRef.current?.(), 2000)
@@ -115,7 +120,7 @@ export default function CurrencyQuiz() {
     const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'currency', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'currency', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -133,7 +138,7 @@ export default function CurrencyQuiz() {
       setMatchedCountry(res.canonicalAnswer)
       setFeedback({ result: 'CORRECT', canonicalName: res.canonicalAnswer })
       questionTimer.stop()
-      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
+      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else {
@@ -189,7 +194,7 @@ export default function CurrencyQuiz() {
           onSubmit={handleSubmit}
           onSkip={() => {
             questionTimer.stop()
-            recordResult(current.isoA2, 'SKIP', null)
+            recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null)
             setFlipped(true)
             setTimeout(() => advanceRef.current?.(), 2000)
           }}

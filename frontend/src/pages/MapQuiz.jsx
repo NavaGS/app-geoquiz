@@ -48,7 +48,7 @@ export default function MapQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'map', region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'map', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   // ── Session countdown timer ──────────────────────────────────────────────────
@@ -58,8 +58,13 @@ export default function MapQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.isoA2)
+      if (unanswered) recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'map', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'map', region, isNewBest, results: historyRef.current } })
     },
   })
 
@@ -74,7 +79,7 @@ export default function MapQuiz() {
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.isoA2, 'SKIP', null)
+      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       setFlashState('wrong')
       setRevealName(c.nameCommon)
       setTimeout(() => advanceRef.current?.(), 2000)
@@ -333,7 +338,7 @@ export default function MapQuiz() {
     setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'map', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'map', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -350,7 +355,7 @@ export default function MapQuiz() {
     if (result.result === 'CORRECT') {
       setFlashState('correct')
       setFeedback(result)
-      recordResult(current.isoA2, 'CORRECT', result.canonicalName)
+      recordResult(current.isoA2, 'CORRECT', result.canonicalName, answer, null)
       setTimeout(() => advanceRef.current?.(), 1200)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
@@ -358,13 +363,13 @@ export default function MapQuiz() {
     } else {
       setFlashState('wrong')
       setRevealName(current.nameCommon)
-      recordResult(current.isoA2, 'WRONG', null)
+      recordResult(current.isoA2, 'WRONG', current.nameCommon, answer, null)
       setTimeout(() => advanceRef.current?.(), 2000)
     }
   }
 
   function handleConfirmClose() {
-    recordResult(current.isoA2, 'CORRECT', feedback.canonicalName)
+    recordResult(current.isoA2, 'CORRECT', feedback.canonicalName, answer, null)
     setTimeout(() => advanceRef.current?.(), 800)
   }
 
@@ -383,7 +388,7 @@ export default function MapQuiz() {
     if (isSkippingRef.current) return
     isSkippingRef.current = true
     questionTimer.stop()
-    recordResult(current.isoA2, 'SKIP', null)
+    recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null)
     setFlashState('wrong')
     setRevealName(current.nameCommon)
     setTimeout(() => advanceRef.current?.(), 2000)

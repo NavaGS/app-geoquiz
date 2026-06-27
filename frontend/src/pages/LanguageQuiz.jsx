@@ -28,7 +28,7 @@ export default function LanguageQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, recordResult, savePersonalBest } = useQuizSession({ mode: 'language', region })
+  const { score, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'language', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -37,8 +37,13 @@ export default function LanguageQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.isoA2)
+      if (unanswered) recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'language', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'language', region, isNewBest, results: historyRef.current } })
     },
   })
 
@@ -53,7 +58,7 @@ export default function LanguageQuiz() {
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.isoA2, 'SKIP', null)
+      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       setTimeout(() => {
         setFlipped(true)
         setTimeout(() => advanceRef.current?.(), 2000)
@@ -104,7 +109,7 @@ export default function LanguageQuiz() {
     const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'language', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'language', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -122,7 +127,7 @@ export default function LanguageQuiz() {
       setFlashState('correct')
       setFeedback(fb)
       questionTimer.stop()
-      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
+      recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (res.result === 'CLOSE') {
@@ -188,7 +193,7 @@ export default function LanguageQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           placeholder="Type a language…"
           flash={flashState}
@@ -201,8 +206,8 @@ export default function LanguageQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
-            else { recordResult(current.isoA2, 'SKIP', null); advance() }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName, answer, null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
+            else { recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null); advanceRef.current?.() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import * as d3 from 'd3'
 import FlipCard from '../components/FlipCard.jsx'
 import AnswerInput from '../components/AnswerInput.jsx'
 import FeedbackBanner from '../components/FeedbackBanner.jsx'
@@ -12,57 +11,7 @@ import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
 import { getRegion } from '../utils/regionSettings.js'
-import { useTheme } from '../contexts/ThemeContext.jsx'
-
-function ShapeSvg({ geojsonStr }) {
-  const { theme } = useTheme()
-  const rotationRef = useRef((Math.random() * 30 - 15).toFixed(1))
-
-  const shapeFill = theme === 'dark' ? '#4F70FF' : '#1B3FE4'
-
-  if (!geojsonStr) return <div className="text-muted text-sm">No shape data</div>
-
-  let geojson
-  try { geojson = JSON.parse(geojsonStr) } catch { return <div className="text-muted text-sm">Invalid shape</div> }
-
-  const W = 280, H = 220, PAD = 16
-  const feature = { type: 'Feature', geometry: geojson, properties: {} }
-
-  let pathData
-  try {
-    const centroid = d3.geoCentroid(feature)
-    const projection = d3.geoAzimuthalEqualArea()
-      .rotate([-centroid[0], -centroid[1]])
-      .fitExtent([[PAD, PAD], [W - PAD, H - PAD]], feature)
-    const pathGen = d3.geoPath().projection(projection)
-    pathData = pathGen(feature)
-    if (!pathData || pathData.length < 10) return <div className="text-muted text-sm">Shape unavailable</div>
-  } catch {
-    return <div className="text-muted text-sm">Shape unavailable</div>
-  }
-
-  return (
-    <div className="w-full flex items-center justify-center" style={{ height: 160, overflow: 'hidden' }}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        style={{ width: '100%', height: '100%', transform: `rotate(${rotationRef.current}deg)`, transformOrigin: 'center' }}
-      >
-        <defs>
-          <filter id="shapeShadow">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15" />
-          </filter>
-        </defs>
-        <path
-          d={pathData}
-          fill={shapeFill}
-          stroke="white"
-          strokeWidth={1}
-          filter="url(#shapeShadow)"
-        />
-      </svg>
-    </div>
-  )
-}
+import ShapeSvg from '../components/ShapeSvg.jsx'
 
 export default function ShapesQuiz() {
   const navigate = useNavigate()
@@ -82,7 +31,7 @@ export default function ShapesQuiz() {
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode: 'shapes', region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode: 'shapes', region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   const sessionExpiredRef = useRef(false)
@@ -91,8 +40,13 @@ export default function ShapesQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
+      const c = currentRef.current
+      const last = historyRef.current[historyRef.current.length - 1]
+      const unanswered = c && (!last || last.countryIso !== c.isoA2)
+      if (unanswered) recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       const isNewBest = savePersonalBest()
-      navigate('/session-end', { state: { score: scoreRef.current, mode: 'shapes', region, isNewBest } })
+      const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      navigate('/session-end', { state: { score: sessionScore, mode: 'shapes', region, isNewBest, results: historyRef.current } })
     },
   })
 
@@ -107,7 +61,7 @@ export default function ShapesQuiz() {
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
-      recordResult(c.isoA2, 'SKIP', null)
+      recordResult(c.isoA2, 'SKIP', c.nameCommon, null, null)
       setTimeout(() => {
         setFlipped(true)
         setTimeout(() => advanceRef.current?.(), 2000)
@@ -164,7 +118,7 @@ export default function ShapesQuiz() {
     const updateQueue = () => setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
-        navigate('/session-end', { state: { score, mode: 'shapes', region, isNewBest: savePersonalBest() } })
+        navigate('/session-end', { state: { score, mode: 'shapes', region, isNewBest: savePersonalBest(), results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])
@@ -181,7 +135,7 @@ export default function ShapesQuiz() {
       setFlashState('correct')
       setFeedback(result)
       questionTimer.stop()
-      recordResult(current.isoA2, 'CORRECT', result.canonicalName)
+      recordResult(current.isoA2, 'CORRECT', result.canonicalName, answer, null)
       setFlipped(true)
       setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
@@ -238,7 +192,7 @@ export default function ShapesQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           flash={flashState}
           focusKey={qIndex}
@@ -250,8 +204,8 @@ export default function ShapesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
-            else { recordResult(current.isoA2, 'SKIP', null); advance() }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName, answer, null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
+            else { recordResult(current.isoA2, 'SKIP', current.nameCommon, null, null); advanceRef.current?.() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}
         />
