@@ -110,7 +110,7 @@ export default function ShapesQuiz() {
       recordResult(c.isoA2, 'SKIP', null)
       setTimeout(() => {
         setFlipped(true)
-        setTimeout(() => advanceRef.current?.(), 1600)
+        setTimeout(() => advanceRef.current?.(), 2000)
       }, 1000)
     },
   })
@@ -238,7 +238,7 @@ export default function ShapesQuiz() {
           value={answer}
           onChange={setAnswer}
           onSubmit={handleSubmit}
-          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 1600) }}
+          onSkip={() => { questionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); setFlipped(true); setTimeout(() => advanceRef.current?.(), 2000) }}
           disabled={!!feedback && feedback.result === 'CORRECT'}
           flash={flashState}
           focusKey={qIndex}

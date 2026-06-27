@@ -61,7 +61,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       recordResult(iso, 'SKIP', null)
       setTimeout(() => {
         setFlipped(true)
-        setTimeout(() => advanceRef.current?.(), 1600)
+        setTimeout(() => advanceRef.current?.(), 2000)
       }, 1000)
     }, [recordResult, getQuestion]),
   })
@@ -177,7 +177,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     questionTimer.stop()
     recordResult(getQuestion(current)?.iso, 'SKIP', null)
     setFlipped(true)
-    setTimeout(advance, 1600)
+    setTimeout(advance, 2000)
   }
 
   useEffect(() => {
