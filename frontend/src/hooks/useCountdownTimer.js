@@ -11,11 +11,23 @@ export function useCountdownTimer({ seconds, onExpire, autoStart = false }) {
   const [remaining, setRemaining] = useState(seconds)
   const [isRunning, setIsRunning] = useState(false)
   const intervalRef = useRef(null)
+  const remainingRef = useRef(seconds)
   const onExpireRef = useRef(onExpire)
   const defaultSecsRef = useRef(seconds)
 
   useEffect(() => { onExpireRef.current = onExpire }, [onExpire])
   useEffect(() => { defaultSecsRef.current = seconds }, [seconds])
+
+  const tick = useCallback(() => {
+    remainingRef.current -= 1
+    setRemaining(remainingRef.current)
+    if (remainingRef.current <= 0) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+      setIsRunning(false)
+      onExpireRef.current?.()
+    }
+  }, [])
 
   const stop = useCallback(() => {
     clearInterval(intervalRef.current)
@@ -26,45 +38,27 @@ export function useCountdownTimer({ seconds, onExpire, autoStart = false }) {
   const start = useCallback(() => {
     if (intervalRef.current) return
     setIsRunning(true)
-    intervalRef.current = setInterval(() => {
-      setRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(intervalRef.current)
-          intervalRef.current = null
-          setIsRunning(false)
-          onExpireRef.current?.()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-  }, [])
+    intervalRef.current = setInterval(tick, 1000)
+  }, [tick])
 
   const reset = useCallback((secs) => {
     clearInterval(intervalRef.current)
     intervalRef.current = null
     setIsRunning(false)
-    setRemaining(secs !== undefined ? secs : defaultSecsRef.current)
+    const val = secs !== undefined ? secs : defaultSecsRef.current
+    remainingRef.current = val
+    setRemaining(val)
   }, [])
 
   const startFrom = useCallback((secs) => {
     clearInterval(intervalRef.current)
     intervalRef.current = null
-    setRemaining(secs !== undefined ? secs : defaultSecsRef.current)
+    const val = secs !== undefined ? secs : defaultSecsRef.current
+    remainingRef.current = val
+    setRemaining(val)
     setIsRunning(true)
-    intervalRef.current = setInterval(() => {
-      setRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(intervalRef.current)
-          intervalRef.current = null
-          setIsRunning(false)
-          onExpireRef.current?.()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-  }, [])
+    intervalRef.current = setInterval(tick, 1000)
+  }, [tick])
 
   useEffect(() => {
     if (autoStart) start()

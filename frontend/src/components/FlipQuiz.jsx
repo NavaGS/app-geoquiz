@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import FlipCard from './FlipCard.jsx'
 import AnswerInput from './AnswerInput.jsx'
@@ -58,7 +58,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
       const iso = getQuestion ? getQuestion(c)?.iso : c.isoA2
       recordResult(iso, 'SKIP', null)
       setFlipped(true)
-      setTimeout(() => advanceRef.current?.(), 1300)
+      setTimeout(() => advanceRef.current?.(), 1000)
     }, [recordResult, getQuestion]),
   })
 
@@ -166,7 +166,8 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   function handleSkip() {
     questionTimer.stop()
     recordResult(getQuestion(current)?.iso, 'SKIP', null)
-    advance()
+    setFlipped(true)
+    setTimeout(advance, 1000)
   }
 
   useEffect(() => {
@@ -179,6 +180,9 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
   }, [])
+
+  const frontContent = useMemo(() => current ? renderFront(current) : null, [current, renderFront])
+  const backContent  = useMemo(() => current ? renderBack(current)  : null, [current, renderBack])
 
   // ── Render ───────────────────────────────────────────────────────────────────
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading countries…</div>
@@ -214,8 +218,8 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
         )}
 
         <FlipCard
-          front={renderFront(current)}
-          back={renderBack(current)}
+          front={frontContent}
+          back={backContent}
           autoFlip={flipped}
           flashState={flashState}
         />
