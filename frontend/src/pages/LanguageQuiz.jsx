@@ -124,7 +124,7 @@ export default function LanguageQuiz() {
       questionTimer.stop()
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else if (res.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(fb)
@@ -201,7 +201,7 @@ export default function LanguageQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
+            if (feedback?.result === 'CLOSE') { recordResult(current.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
             else { recordResult(current.isoA2, 'SKIP', null); advance() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}

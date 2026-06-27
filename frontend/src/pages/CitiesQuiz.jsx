@@ -131,7 +131,7 @@ export default function CitiesQuiz() {
       questionTimer.stop()
       recordResult(current.country.isoA2, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -204,7 +204,7 @@ export default function CitiesQuiz() {
           canonicalName={feedback?.canonicalName}
           onConfirm={() => {
             questionTimer.stop()
-            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(advance, 700) }
+            if (feedback?.result === 'CLOSE') { recordResult(current.country.isoA2, 'CORRECT', feedback.canonicalName); setFlipped(true); setTimeout(() => advanceRef.current?.(), 700) }
             else { recordResult(current.country.isoA2, 'SKIP', null); advance() }
           }}
           onRetry={() => { setFeedback(null); setFlashState(null); setAnswer(''); inputRef.current?.focus() }}

@@ -135,7 +135,7 @@ export default function CurrencyQuiz() {
       questionTimer.stop()
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else {
       setAnswer('')
       setFlashState('wrong')

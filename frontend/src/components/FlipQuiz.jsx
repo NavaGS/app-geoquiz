@@ -141,7 +141,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       questionTimer.stop()
       recordResult(question.iso, 'CORRECT', result.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -151,7 +151,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       setFeedback(null)
       setTimeout(() => { setFlashState(null); inputRef.current?.focus() }, 700)
     }
-  }, [answer, current, feedback, getQuestion, submitAnswer, recordResult, advance, questionTimer])
+  }, [answer, current, feedback, getQuestion, submitAnswer, recordResult, questionTimer])
 
   function handleConfirm() {
     if (!feedback) return
@@ -159,7 +159,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     if (feedback.result === 'CLOSE') {
       recordResult(getQuestion(current).iso, 'CORRECT', feedback.canonicalName)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else {
       recordResult(getQuestion(current).iso, 'SKIP', null)
       advance()
@@ -177,7 +177,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
     questionTimer.stop()
     recordResult(getQuestion(current)?.iso, 'SKIP', null)
     setFlipped(true)
-    setTimeout(advance, 2000)
+    setTimeout(() => advanceRef.current?.(), 2000)
   }
 
   useEffect(() => {

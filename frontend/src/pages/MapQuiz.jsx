@@ -351,7 +351,7 @@ export default function MapQuiz() {
       setFlashState('correct')
       setFeedback(result)
       recordResult(current.isoA2, 'CORRECT', result.canonicalName)
-      setTimeout(advance, 1200)
+      setTimeout(() => advanceRef.current?.(), 1200)
     } else if (result.result === 'CLOSE') {
       setFlashState('close')
       setFeedback(result)
@@ -359,13 +359,13 @@ export default function MapQuiz() {
       setFlashState('wrong')
       setRevealName(current.nameCommon)
       recordResult(current.isoA2, 'WRONG', null)
-      setTimeout(advance, 2000)
+      setTimeout(() => advanceRef.current?.(), 2000)
     }
   }
 
   function handleConfirmClose() {
     recordResult(current.isoA2, 'CORRECT', feedback.canonicalName)
-    setTimeout(advance, 800)
+    setTimeout(() => advanceRef.current?.(), 800)
   }
 
   function handleRetry() {

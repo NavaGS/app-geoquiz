@@ -140,7 +140,7 @@ export default function BordersQuiz() {
       setFeedback(fb)
       recordResult(current.isoA2, 'CORRECT', res.canonicalAnswer)
       setFlipped(true)
-      setTimeout(advance, 700)
+      setTimeout(() => advanceRef.current?.(), 700)
     } else {
       setAnswer('')
       setFlashState('wrong')
