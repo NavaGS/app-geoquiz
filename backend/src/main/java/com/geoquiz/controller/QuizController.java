@@ -126,6 +126,65 @@ public class QuizController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/quiz/currency-answer")
+    @Transactional(readOnly = true)
+    public ResponseEntity<Map<String, Object>> submitCurrencyAnswer(@RequestBody Map<String, String> body) {
+        String countryIso = body.get("countryIso");
+        String answer = body.get("answer");
+        if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
+
+        Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
+                .or(() -> countryRepository.findByIsoA3IgnoreCase(countryIso))
+                .orElse(null);
+        if (country == null) return ResponseEntity.notFound().build();
+
+        String currencyCode = country.getCurrencyCode();
+        if (currencyCode == null || currencyCode.isBlank()) return ResponseEntity.badRequest().build();
+
+        // All countries sharing this currency are valid answers
+        List<Country> sharedCountries = countryRepository.findByCurrencyCodeIgnoreCase(currencyCode);
+
+        String normalizedAnswer = normalize(answer);
+        String matchedName = null;
+
+        outer:
+        for (Country c : sharedCountries) {
+            List<String> names = new ArrayList<>();
+            names.add(c.getNameCommon());
+            if (c.getNameOfficial() != null) names.add(c.getNameOfficial());
+            for (CountryAlias alias : c.getAliases()) {
+                names.add(alias.getAlias());
+            }
+            for (String name : names) {
+                if (name == null) continue;
+                if (normalize(name).equals(normalizedAnswer)) {
+                    matchedName = c.getNameCommon();
+                    break outer;
+                }
+                double score = jaroWinkler.apply(normalize(name), normalizedAnswer);
+                if (score >= CORRECT_THRESHOLD) {
+                    matchedName = c.getNameCommon();
+                    break outer;
+                }
+            }
+        }
+
+        List<String> validCountries = sharedCountries.stream()
+                .map(Country::getNameCommon)
+                .collect(java.util.stream.Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("validCountries", validCountries);
+        if (matchedName != null) {
+            result.put("result", "CORRECT");
+            result.put("canonicalAnswer", matchedName);
+        } else {
+            result.put("result", "WRONG");
+            result.put("canonicalAnswer", null);
+        }
+        return ResponseEntity.ok(result);
+    }
+
     @PostMapping("/quiz/border-answer")
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> submitBorderAnswer(@RequestBody Map<String, String> body) {

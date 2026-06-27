@@ -27,6 +27,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ countryIso, answer }),
     }).then(r => r.json()),
+  submitCurrencyAnswer: (countryIso, answer) =>
+    fetch(`${BASE_URL}/api/quiz/currency-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ countryIso, answer }),
+    }).then(r => r.json()),
   submitBorderAnswer: (countryIso, answer) =>
     fetch(`${BASE_URL}/api/quiz/border-answer`, {
       method: 'POST',

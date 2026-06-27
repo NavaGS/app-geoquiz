@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { api } from '../api/client.js'
 import { v4 as uuidv4 } from '../utils/uuid.js'
 
-export function useQuizSession({ mode, region }) {
+export function useQuizSession({ mode, evalMode, region }) {
   const sessionId = useRef(uuidv4())
   const [score, setScore] = useState({ correct: 0, wrong: 0, skipped: 0 })
   const [history, setHistory] = useState([])
@@ -12,7 +12,7 @@ export function useQuizSession({ mode, region }) {
       const result = await api.submitAnswer({
         countryIso,
         answer,
-        mode,
+        mode: evalMode || mode,
         sessionId: sessionId.current,
       })
       return result
@@ -20,7 +20,7 @@ export function useQuizSession({ mode, region }) {
       console.error('Answer submission failed:', e)
       return { result: 'WRONG', similarityScore: 0 }
     }
-  }, [mode])
+  }, [mode, evalMode])
 
   const recordResult = useCallback((countryIso, resultType, canonicalName) => {
     setScore(prev => ({

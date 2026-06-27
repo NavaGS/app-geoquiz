@@ -12,7 +12,7 @@ import { getDifficultySettings, difficultyFilter } from '../utils/difficultySett
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
 import { getRegion } from '../utils/regionSettings.js'
 
-export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn, modeName, modeLabel }) {
+export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, renderBack, getQuestion, questionKey, filterFn, modeName, modeLabel }) {
   const navigate = useNavigate()
   const region = getRegion()
 
@@ -30,7 +30,7 @@ export default function FlipQuiz({ mode, accentColor, renderFront, renderBack, g
   const inputRef = useRef()
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode, region })
+  const { score, submitAnswer, recordResult, savePersonalBest } = useQuizSession({ mode, evalMode, region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   // ── Session countdown timer ─────────────────────────────────────────────────
