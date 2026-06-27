@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
 import QuizHeader from '../components/QuizHeader.jsx'
 import QuestionTimer from '../components/QuestionTimer.jsx'
-import FeedbackBanner from '../components/FeedbackBanner.jsx'
 import { useQuizSession } from '../hooks/useQuizSession.js'
 import { useCountdownTimer } from '../hooks/useCountdownTimer.js'
 import { api } from '../api/client.js'
@@ -19,10 +18,8 @@ const ANTIMERIDIAN_ISOS = new Set(['FJ', 'RU', 'US', 'NZ', 'KI', 'TV', 'WS', 'TO
 const SMALL_COUNTRY_PX = 40
 
 export default function MapQuiz() {
-  const location = useLocation()
   const navigate = useNavigate()
   const region = getRegion()
-  const timerDuration = location.state?.timer || 30
 
   const { theme } = useTheme()
 
@@ -39,17 +36,15 @@ export default function MapQuiz() {
   const geojsonRef = useRef(null)
 
   const [geojson, setGeojson] = useState(null)
-  const [countries, setCountries] = useState([])
   const [queue, setQueue] = useState([])
   const [queueSize, setQueueSize] = useState(0)
   const [current, setCurrent] = useState(null)
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState(null)
   const [flashState, setFlashState] = useState(null)
-  const [timeLeft, setTimeLeft] = useState(timerDuration)
+  const [revealName, setRevealName] = useState(null)
   const [loading, setLoading] = useState(true)
   const inputRef = useRef()
-  const timerRef = useRef()
 
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
@@ -63,7 +58,6 @@ export default function MapQuiz() {
     onExpire: () => {
       if (sessionExpiredRef.current) return
       sessionExpiredRef.current = true
-      clearInterval(timerRef.current)
       const isNewBest = savePersonalBest()
       navigate('/session-end', { state: { score: scoreRef.current, mode: 'map', region, isNewBest } })
     },
@@ -74,13 +68,15 @@ export default function MapQuiz() {
   const currentRef = useRef(null)
   useEffect(() => { currentRef.current = current }, [current])
 
-  const gpQuestionTimer = useCountdownTimer({
+  const questionTimer = useCountdownTimer({
     seconds: 15,
     onExpire: () => {
       const c = currentRef.current
       if (!c) return
       recordResult(c.isoA2, 'SKIP', null)
-      advanceRef.current?.()
+      setFlashState('wrong')
+      setRevealName(c.nameCommon)
+      setTimeout(() => advanceRef.current?.(), 2000)
     },
   })
 
@@ -102,7 +98,6 @@ export default function MapQuiz() {
         shuffled = shuffled.slice(0, Math.min(shuffled.length, gp.maxQuestions))
       }
 
-      setCountries(shuffled)
       setQueueSize(shuffled.length)
       setQueue(shuffled)
       setCurrent(shuffled[0])
@@ -319,42 +314,20 @@ export default function MapQuiz() {
     return () => observer.disconnect()
   }, [current, colors])
 
-  // ── Built-in per-question timer ──────────────────────────────────────────────
-  useEffect(() => {
-    if (!current) return
-    setTimeLeft(timerDuration)
-    clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => {
-      setTimeLeft(t => {
-        if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0 }
-        return t - 1
-      })
-    }, 1000)
-    return () => clearInterval(timerRef.current)
-  }, [current])
-
-  // ── Gameplay per-question timer ──────────────────────────────────────────────
+  // ── Start per-question timer on each new question ────────────────────────────
   useEffect(() => {
     const gp = gpRef.current
     if (!gp || gp.mode !== 'maxquestions' || !gp.perQuestionTimer) return
     if (!current) return
-    gpQuestionTimer.startFrom(gp.perQuestionSecs)
+    questionTimer.startFrom(gp.perQuestionSecs)
   }, [current])
-
-  function handleTimeout() {
-    if (!current) return
-    setFlashState('wrong')
-    setFeedback({ result: 'WRONG', timeout: true, canonicalName: current.nameCommon })
-    recordResult(current.isoA2, 'WRONG', current.nameCommon)
-    setTimeout(advance, 800)
-  }
 
   const advance = useCallback(() => {
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
-    clearInterval(timerRef.current)
-    gpQuestionTimer.stop()
+    setRevealName(null)
+    questionTimer.stop()
     setQueue(prev => {
       const next = prev.slice(1)
       if (next.length === 0) {
@@ -364,23 +337,27 @@ export default function MapQuiz() {
       setCurrent(next[0])
       return next
     })
-  }, [score, navigate, region, savePersonalBest, gpQuestionTimer])
+  }, [score, navigate, region, savePersonalBest, questionTimer])
 
   useEffect(() => { advanceRef.current = advance }, [advance])
 
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
-    clearInterval(timerRef.current)
-    gpQuestionTimer.stop()
+    questionTimer.stop()
     const result = await submitAnswer(current.isoA2, answer)
-    setFlashState(result.result === 'CORRECT' ? 'correct' : result.result === 'CLOSE' ? 'close' : 'wrong')
-    setFeedback(result)
     if (result.result === 'CORRECT') {
+      setFlashState('correct')
+      setFeedback(result)
       recordResult(current.isoA2, 'CORRECT', result.canonicalName)
       setTimeout(advance, 1200)
-    } else if (result.result === 'WRONG') {
+    } else if (result.result === 'CLOSE') {
+      setFlashState('close')
+      setFeedback(result)
+    } else {
+      setFlashState('wrong')
+      setRevealName(current.nameCommon)
       recordResult(current.isoA2, 'WRONG', null)
-      setTimeout(advance, 800)
+      setTimeout(advance, 2000)
     }
   }
 
@@ -392,19 +369,21 @@ export default function MapQuiz() {
   function handleRetry() {
     setFeedback(null)
     setFlashState(null)
+    setRevealName(null)
     setAnswer('')
-    setTimeLeft(timerDuration)
-    clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => {
-      setTimeLeft(t => {
-        if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0 }
-        return t - 1
-      })
-    }, 1000)
+    const gp = gpRef.current
+    if (gp?.mode === 'maxquestions' && gp.perQuestionTimer) {
+      questionTimer.startFrom(gp.perQuestionSecs)
+    }
   }
 
-  const timerPct = (timeLeft / timerDuration) * 100
-  const timerBarColor = timerPct > 50 ? 'var(--success)' : timerPct > 25 ? 'var(--warning)' : 'var(--error)'
+  function handleSkip() {
+    questionTimer.stop()
+    recordResult(current.isoA2, 'SKIP', null)
+    setFlashState('wrong')
+    setRevealName(current.nameCommon)
+    setTimeout(() => advanceRef.current?.(), 2000)
+  }
 
   if (loading) return <div className="min-h-screen bg-base flex items-center justify-center text-muted">Loading map…</div>
   if (!current) return (
@@ -415,9 +394,15 @@ export default function MapQuiz() {
   )
 
   const gp = gpRef.current || { mode: 'none' }
-  const showSessionTimer = gp.mode === 'countdown'
-  const showGpQTimer = gp.mode === 'maxquestions' && gp.perQuestionTimer
+  const showQTimer = gp.mode === 'maxquestions' && gp.perQuestionTimer
   const qIndex = queueSize - queue.length + 1
+
+  const inputBorderClass =
+    flashState === 'correct' ? 'border-success ring-2 ring-success/30' :
+    flashState === 'wrong'   ? 'border-error ring-2 ring-error/30' :
+    'border-border-col focus:border-accent focus:ring-2'
+
+  const isInputDisabled = !!feedback && feedback.result !== 'CLOSE'
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -428,37 +413,26 @@ export default function MapQuiz() {
         score={score}
         sessionTimer={sessionTimer}
         gp={gp}
-        counterLabel={`${timeLeft}s`}
+        qIndex={qIndex}
+        total={queueSize}
       />
 
-      {/* Timer bar */}
-      {showGpQTimer ? (
+      {/* Per-question timer bar */}
+      {showQTimer && (
         <div className="flex-none w-full">
-          <QuestionTimer remaining={gpQuestionTimer.remaining} total={gp.perQuestionSecs} />
-        </div>
-      ) : (
-        <div className="flex-none w-full h-[3px] bg-subtle">
-          <div className="h-full transition-all duration-1000" style={{ width: `${timerPct}%`, backgroundColor: timerBarColor }} />
+          <QuestionTimer remaining={questionTimer.remaining} total={gp.perQuestionSecs} startKey={qIndex} />
         </div>
       )}
 
       {/* Map */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">
         <svg ref={svgRef} className="w-full h-full block" />
-
-        {flashState === 'wrong' && feedback?.canonicalName && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="bg-error text-white text-xl font-bold px-4 py-2 rounded-xl opacity-90">
-              {feedback.canonicalName}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Input bar */}
       <div className="flex-none bg-surface border-t border-border-col px-4 py-3 z-10">
         <p className="text-xs text-muted text-center mb-2 uppercase tracking-widest">Name the highlighted country</p>
-        <div className="flex flex-col gap-2 max-w-lg mx-auto">
+        <div className="flex flex-col gap-1.5 max-w-lg mx-auto">
           <input
             ref={inputRef}
             type="text"
@@ -466,19 +440,26 @@ export default function MapQuiz() {
             onChange={e => setAnswer(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') handleSubmit()
-              if (e.key === 'Tab') { e.preventDefault(); gpQuestionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }
+              if (e.key === 'Tab') { e.preventDefault(); handleSkip() }
             }}
             placeholder="Country name…"
-            disabled={!!feedback}
+            disabled={isInputDisabled}
             autoFocus
-            className="w-full h-11 bg-subtle border border-border-col rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none focus:border-accent disabled:opacity-50"
+            className={`w-full h-11 bg-subtle border rounded-lg px-3 text-sm text-primary placeholder:text-muted focus:outline-none disabled:opacity-50 transition-colors ${inputBorderClass}`}
           />
+
+          {revealName && (
+            <p className="text-xs font-semibold text-center" style={{ color: 'var(--error)' }}>
+              {revealName}
+            </p>
+          )}
+
           <div className="flex justify-end gap-4">
-            <button onClick={handleSubmit} disabled={!!feedback}
+            <button onClick={handleSubmit} disabled={isInputDisabled}
               className="text-accent text-sm font-medium disabled:opacity-50 hover:opacity-80">
               Submit
             </button>
-            <button onClick={() => { gpQuestionTimer.stop(); recordResult(current.isoA2, 'SKIP', null); advance() }}
+            <button onClick={handleSkip} disabled={isInputDisabled}
               className="text-muted text-sm disabled:opacity-50 hover:text-secondary">
               Skip
             </button>
