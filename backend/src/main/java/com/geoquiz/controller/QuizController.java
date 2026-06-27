@@ -26,7 +26,7 @@ public class QuizController {
 
     private static final Logger log = LoggerFactory.getLogger(QuizController.class);
     private static final double CORRECT_THRESHOLD = 0.92;
-    private static final double CLOSE_THRESHOLD = 0.80;
+    private static final double CLOSE_THRESHOLD = 0.85;
 
     private final QuizAnswerService answerService;
     private final QuizEventRepository quizEventRepository;
