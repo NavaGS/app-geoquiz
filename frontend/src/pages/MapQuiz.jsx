@@ -66,6 +66,7 @@ export default function MapQuiz() {
   // ── Per-question timer ───────────────────────────────────────────────────────
   const advanceRef = useRef(null)
   const currentRef = useRef(null)
+  const isSkippingRef = useRef(false)
   useEffect(() => { currentRef.current = current }, [current])
 
   const questionTimer = useCountdownTimer({
@@ -323,6 +324,7 @@ export default function MapQuiz() {
   }, [current])
 
   const advance = useCallback(() => {
+    isSkippingRef.current = false
     setAnswer('')
     setFeedback(null)
     setFlashState(null)
@@ -378,6 +380,8 @@ export default function MapQuiz() {
   }
 
   function handleSkip() {
+    if (isSkippingRef.current) return
+    isSkippingRef.current = true
     questionTimer.stop()
     recordResult(current.isoA2, 'SKIP', null)
     setFlashState('wrong')
@@ -402,7 +406,7 @@ export default function MapQuiz() {
     flashState === 'wrong'   ? 'border-error ring-2 ring-error/30' :
     'border-border-col focus:border-accent focus:ring-2'
 
-  const isInputDisabled = !!feedback && feedback.result !== 'CLOSE'
+  const isInputDisabled = (!!feedback && feedback.result !== 'CLOSE') || !!revealName
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
