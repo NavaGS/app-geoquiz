@@ -5,11 +5,14 @@ import com.geoquiz.entity.Country;
 import com.geoquiz.entity.CountryBoundary;
 import com.geoquiz.repository.CountryBoundaryRepository;
 import com.geoquiz.repository.CountryRepository;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/map")
@@ -27,6 +30,7 @@ public class MapController {
         this.objectMapper = objectMapper;
     }
 
+    @Cacheable(value = "geojson", key = "#region")
     @GetMapping(value = "/geojson", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getWorldGeoJson(@RequestParam(defaultValue = "All") String region) {
         List<Country> countries;
@@ -66,7 +70,9 @@ public class MapController {
         featureCollection.put("features", features);
 
         try {
-            return ResponseEntity.ok(objectMapper.writeValueAsString(featureCollection));
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                    .body(objectMapper.writeValueAsString(featureCollection));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }

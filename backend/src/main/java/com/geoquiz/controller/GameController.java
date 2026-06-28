@@ -3,6 +3,7 @@ package com.geoquiz.controller;
 import com.geoquiz.entity.QuizEvent;
 import com.geoquiz.repository.QuizEventRepository;
 import com.geoquiz.service.MonitoringService;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -18,11 +19,13 @@ public class GameController {
         this.quizEventRepository = quizEventRepository;
     }
 
+    @Cacheable("public-stats")
     @GetMapping("/api/public/stats")
     public Map<String, Object> getPublicStats() {
         return monitoringService.getPublicStats();
     }
 
+    @Cacheable(value = "leaderboard", key = "#mode + '-' + #limit")
     @GetMapping("/api/leaderboard")
     public List<Map<String, Object>> getLeaderboard(
             @RequestParam String mode,

@@ -7,6 +7,7 @@ import com.geoquiz.entity.CountryBoundary;
 import com.geoquiz.repository.CityRepository;
 import com.geoquiz.repository.CountryBoundaryRepository;
 import com.geoquiz.repository.CountryRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +34,7 @@ public class CountryController {
         this.objectMapper = objectMapper;
     }
 
+    @Cacheable(value = "countries", key = "#region")
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> listCountries(@RequestParam(defaultValue = "All") String region) {
         List<Country> countries;
