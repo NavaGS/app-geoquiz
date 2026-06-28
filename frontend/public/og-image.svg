@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#060E1C"/>
+
+  <!-- Subtle dot grid -->
+  <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+    <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.04)"/>
+  </pattern>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+
+  <!-- Left accent bar -->
+  <rect x="0" y="0" width="6" height="630" fill="#1B3FE4"/>
+
+  <!-- Globe decoration (right side) -->
+  <circle cx="950" cy="315" r="220" fill="none" stroke="rgba(27,63,228,0.2)" stroke-width="1.5"/>
+  <circle cx="950" cy="315" r="165" fill="none" stroke="rgba(27,63,228,0.25)" stroke-width="1.5"/>
+  <circle cx="950" cy="315" r="110" fill="none" stroke="rgba(27,63,228,0.3)" stroke-width="1.5"/>
+  <ellipse cx="950" cy="315" rx="55" ry="165" fill="none" stroke="rgba(27,63,228,0.3)" stroke-width="1.5"/>
+  <ellipse cx="950" cy="315" rx="165" ry="55" fill="none" stroke="rgba(27,63,228,0.3)" stroke-width="1.5"/>
+  <!-- continent blobs on globe -->
+  <ellipse cx="910" cy="260" rx="40" ry="28" fill="rgba(27,63,228,0.35)" transform="rotate(-15 910 260)"/>
+  <ellipse cx="975" cy="300" rx="30" ry="40" fill="rgba(27,63,228,0.35)" transform="rotate(10 975 300)"/>
+  <ellipse cx="920" cy="355" rx="35" ry="22" fill="rgba(27,63,228,0.35)" transform="rotate(-8 920 355)"/>
+  <ellipse cx="985" cy="370" rx="18" ry="24" fill="rgba(27,63,228,0.3)"/>
+
+  <!-- GeoQuiz wordmark -->
+  <text x="80" y="230" font-family="Inter, Arial Black, Arial, sans-serif" font-size="100" font-weight="800" letter-spacing="-3" fill="white">GeoQuiz</text>
+
+  <!-- Blue underline accent -->
+  <rect x="80" y="248" width="340" height="5" rx="2.5" fill="#1B3FE4"/>
+
+  <!-- Tagline -->
+  <text x="80" y="320" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="400" fill="#94A3B8">How well do you know the world?</text>
+
+  <!-- Mode pills -->
+  <rect x="80" y="370" width="130" height="40" rx="20" fill="rgba(27,63,228,0.25)" stroke="rgba(27,63,228,0.6)" stroke-width="1.5"/>
+  <text x="145" y="395" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#6B8FFF" text-anchor="middle">🏳️  Flags</text>
+
+  <rect x="226" y="370" width="150" height="40" rx="20" fill="rgba(27,63,228,0.25)" stroke="rgba(27,63,228,0.6)" stroke-width="1.5"/>
+  <text x="301" y="395" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#6B8FFF" text-anchor="middle">🗺️  Maps</text>
+
+  <rect x="392" y="370" width="180" height="40" rx="20" fill="rgba(27,63,228,0.25)" stroke="rgba(27,63,228,0.6)" stroke-width="1.5"/>
+  <text x="482" y="395" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#6B8FFF" text-anchor="middle">🏛️  Capitals</text>
+
+  <rect x="588" y="370" width="180" height="40" rx="20" fill="rgba(27,63,228,0.25)" stroke="rgba(27,63,228,0.6)" stroke-width="1.5"/>
+  <text x="678" y="395" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#6B8FFF" text-anchor="middle">🔷  Shapes</text>
+
+  <!-- Divider -->
+  <line x1="80" y1="455" x2="700" y2="455" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+
+  <!-- Description -->
+  <text x="80" y="500" font-family="Inter, Arial, sans-serif" font-size="22" fill="#64748B">Free to play · No sign-up · Countdown mode</text>
+
+  <!-- URL -->
+  <text x="80" y="560" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="600" fill="#1B3FE4">app-geoquiz.vercel.app</text>
+
+</svg>
