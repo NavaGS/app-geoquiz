@@ -11,6 +11,7 @@ import com.geoquiz.repository.CountryRepository;
 import com.geoquiz.repository.QuizEventRepository;
 import com.geoquiz.service.QuizAnswerService;
 import jakarta.validation.Valid;
+import static net.logstash.logback.argument.StructuredArguments.kv;
 import org.apache.commons.text.similarity.JaroWinklerSimilarity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,11 +59,17 @@ public class QuizController {
             event.setEventType("answer");
             event.setWasCorrect(response.getResult() == AnswerResponse.Result.CORRECT);
             event.setSimilarityScore(response.getSimilarityScore());
+            event.setRegionFilter(request.getRegionFilter());
+            event.setUserId(request.getUserId());
             quizEventRepository.save(event);
 
-            log.info("{\"event_type\":\"answer\",\"session_id\":\"{}\",\"mode\":\"{}\",\"country_iso\":\"{}\",\"answer_given\":\"{}\",\"was_correct\":{},\"similarity_score\":{}}",
-                    request.getSessionId(), request.getMode(), request.getCountryIso(),
-                    request.getAnswer(), event.getWasCorrect(), response.getSimilarityScore());
+            log.info("quiz_answer",
+                kv("event_type", "answer"),
+                kv("session_id", request.getSessionId()),
+                kv("mode", request.getMode()),
+                kv("country_iso", request.getCountryIso()),
+                kv("was_correct", event.getWasCorrect()),
+                kv("similarity_score", response.getSimilarityScore()));
 
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -71,10 +78,13 @@ public class QuizController {
     }
 
     @PostMapping("/quiz/language-answer")
-    @Transactional(readOnly = true)
+    @Transactional
     public ResponseEntity<Map<String, Object>> submitLanguageAnswer(@RequestBody Map<String, String> body) {
         String countryIso = body.get("countryIso");
         String answer = body.get("answer");
+        String sessionId = body.get("sessionId");
+        String regionFilter = body.get("regionFilter");
+        String userId = body.get("userId");
         if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
 
         Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
@@ -94,15 +104,15 @@ public class QuizController {
         String normalizedAnswer = normalize(answer);
         String bestMatch = null;
         double bestScore = 0.0;
+        boolean exactMatch = false;
 
         for (String lang : allLanguages) {
             String normLang = normalize(lang);
             if (normLang.equals(normalizedAnswer)) {
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("result", "CORRECT");
-                result.put("canonicalAnswer", lang);
-                result.put("allLanguages", allLanguages);
-                return ResponseEntity.ok(result);
+                bestMatch = lang;
+                bestScore = 1.0;
+                exactMatch = true;
+                break;
             }
             double score = jaroWinkler.apply(normLang, normalizedAnswer);
             if (score > bestScore) {
@@ -113,7 +123,7 @@ public class QuizController {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("allLanguages", allLanguages);
-        if (bestScore >= CORRECT_THRESHOLD) {
+        if (exactMatch || bestScore >= CORRECT_THRESHOLD) {
             result.put("result", "CORRECT");
             result.put("canonicalAnswer", bestMatch);
         } else if (bestScore >= CLOSE_THRESHOLD) {
@@ -123,14 +133,36 @@ public class QuizController {
             result.put("result", "WRONG");
             result.put("canonicalAnswer", null);
         }
+
+        boolean wasCorrect = "CORRECT".equals(result.get("result"));
+        QuizEvent langEvent = new QuizEvent();
+        langEvent.setSessionId(sessionId);
+        langEvent.setMode("language");
+        langEvent.setRegionFilter(regionFilter);
+        langEvent.setEventType("answer");
+        langEvent.setCountryIso(countryIso);
+        langEvent.setAnswerGiven(answer);
+        langEvent.setUserId(userId);
+        langEvent.setWasCorrect(wasCorrect);
+        quizEventRepository.save(langEvent);
+        log.info("quiz_answer",
+            kv("event_type", "answer"),
+            kv("session_id", sessionId),
+            kv("mode", "language"),
+            kv("country_iso", countryIso),
+            kv("was_correct", wasCorrect));
+
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/quiz/currency-answer")
-    @Transactional(readOnly = true)
+    @Transactional
     public ResponseEntity<Map<String, Object>> submitCurrencyAnswer(@RequestBody Map<String, String> body) {
         String countryIso = body.get("countryIso");
         String answer = body.get("answer");
+        String sessionId = body.get("sessionId");
+        String regionFilter = body.get("regionFilter");
+        String userId = body.get("userId");
         if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
 
         Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
@@ -182,14 +214,36 @@ public class QuizController {
             result.put("result", "WRONG");
             result.put("canonicalAnswer", null);
         }
+
+        boolean wasCorrect = matchedName != null;
+        QuizEvent currencyEvent = new QuizEvent();
+        currencyEvent.setSessionId(sessionId);
+        currencyEvent.setMode("currency");
+        currencyEvent.setRegionFilter(regionFilter);
+        currencyEvent.setEventType("answer");
+        currencyEvent.setCountryIso(countryIso);
+        currencyEvent.setAnswerGiven(answer);
+        currencyEvent.setUserId(userId);
+        currencyEvent.setWasCorrect(wasCorrect);
+        quizEventRepository.save(currencyEvent);
+        log.info("quiz_answer",
+            kv("event_type", "answer"),
+            kv("session_id", sessionId),
+            kv("mode", "currency"),
+            kv("country_iso", countryIso),
+            kv("was_correct", wasCorrect));
+
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/quiz/border-answer")
-    @Transactional(readOnly = true)
+    @Transactional
     public ResponseEntity<Map<String, Object>> submitBorderAnswer(@RequestBody Map<String, String> body) {
         String countryIso = body.get("countryIso");
         String answer = body.get("answer");
+        String sessionId = body.get("sessionId");
+        String regionFilter = body.get("regionFilter");
+        String userId = body.get("userId");
         if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
 
         Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
@@ -253,6 +307,27 @@ public class QuizController {
             result.put("result", "WRONG");
             result.put("canonicalAnswer", null);
         }
+
+        if (!answer.isBlank()) {
+            boolean wasCorrect = matchedName != null;
+            QuizEvent borderEvent = new QuizEvent();
+            borderEvent.setSessionId(sessionId);
+            borderEvent.setMode("borders");
+            borderEvent.setRegionFilter(regionFilter);
+            borderEvent.setEventType("answer");
+            borderEvent.setCountryIso(countryIso);
+            borderEvent.setAnswerGiven(answer);
+            borderEvent.setUserId(userId);
+            borderEvent.setWasCorrect(wasCorrect);
+            quizEventRepository.save(borderEvent);
+            log.info("quiz_answer",
+                kv("event_type", "answer"),
+                kv("session_id", sessionId),
+                kv("mode", "borders"),
+                kv("country_iso", countryIso),
+                kv("was_correct", wasCorrect));
+        }
+
         return ResponseEntity.ok(result);
     }
 
@@ -267,6 +342,7 @@ public class QuizController {
         event.setAnswerGiven(request.getAnswerGiven());
         event.setWasCorrect(request.getWasCorrect());
         event.setSimilarityScore(request.getSimilarityScore());
+        event.setUserId(request.getUserId());
         quizEventRepository.save(event);
         return ResponseEntity.ok().build();
     }

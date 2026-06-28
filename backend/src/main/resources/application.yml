@@ -18,6 +18,9 @@ spring:
 frontend:
   origin: ${FRONTEND_ORIGIN:}
 
+admin:
+  token: ${ADMIN_TOKEN:dev}
+
 geonames:
   username: ${GEONAMES_USERNAME:demo}
 
@@ -37,6 +40,10 @@ management:
 
 server:
   port: ${PORT:8080}
+  compression:
+    enabled: true
+    mime-types: application/json,application/javascript,text/html,text/css,text/plain
+    min-response-size: 2048
 
 logging:
   level:

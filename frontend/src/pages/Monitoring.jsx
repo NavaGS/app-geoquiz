@@ -2,6 +2,59 @@ import { useState, useEffect, useRef } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { api, SSE_URL } from '../api/client.js'
 
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'dev'
+
+function LockScreen({ onUnlock }) {
+  const [input, setInput] = useState('')
+  const [shake, setShake] = useState(false)
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    if (input === ADMIN_TOKEN) {
+      localStorage.setItem('gq_admin_token', ADMIN_TOKEN)
+      onUnlock()
+    } else {
+      setShake(true)
+      setInput('')
+      setTimeout(() => setShake(false), 600)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-base flex items-center justify-center px-4">
+      <div className="bg-surface border border-border-col rounded-2xl p-8 w-full max-w-sm text-center space-y-5 shadow-lg">
+        <div className="text-5xl">🔒</div>
+        <div>
+          <p className="font-bold text-primary text-lg">Admin Dashboard</p>
+          <p className="text-xs text-muted mt-1">Enter your admin token to continue</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="password"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Token"
+            autoFocus
+            className={`w-full px-3 py-2.5 rounded-lg bg-subtle border text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent transition-all ${
+              shake ? 'border-error focus:ring-error animate-[shake_0.4s_ease]' : 'border-border-col'
+            }`}
+          />
+          <button
+            type="submit"
+            className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            Unlock
+          </button>
+        </form>
+        <p className="text-xs text-muted">
+          Looking for public stats?{' '}
+          <a href="/game-analytics" className="text-accent hover:underline">Game Analytics →</a>
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function SectionHeading({ children }) {
   return (
     <div className="col-span-full mt-2 first:mt-0">
@@ -23,6 +76,14 @@ function Tile({ title, description, children, wide }) {
 }
 
 export default function Monitoring() {
+  const [unlocked, setUnlocked] = useState(() => localStorage.getItem('gq_admin_token') === ADMIN_TOKEN)
+
+  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />
+
+  return <MonitoringDashboard />
+}
+
+function MonitoringDashboard() {
   const [stats, setStats] = useState(null)
   const [liveEvents, setLiveEvents] = useState([])
   const [error, setError] = useState(null)
@@ -38,7 +99,8 @@ export default function Monitoring() {
     loadStats()
     const interval = setInterval(loadStats, 30000)
 
-    const sse = new EventSource(SSE_URL)
+    const token = localStorage.getItem('gq_admin_token') || ''
+    const sse = new EventSource(`${SSE_URL}?adminToken=${encodeURIComponent(token)}`)
     sseRef.current = sse
     sse.addEventListener('stats', e => {
       try {
@@ -60,6 +122,7 @@ export default function Monitoring() {
 
   const modePop = stats ? Object.entries(stats.modePopularity || {}).map(([mode, count]) => ({ mode, count })) : []
   const modeAcc = stats ? Object.entries(stats.modeAccuracy || {}).map(([mode, accuracy]) => ({ mode, accuracy: Math.round(accuracy) })) : []
+  const skipRateData = stats ? Object.entries(stats.skipRateByMode || {}).map(([mode, rate]) => ({ mode, rate: Math.round(rate) })) : []
 
   const requestStatus = stats?.errorRates ? (() => {
     const total = stats.errorRates.total || 0
@@ -78,6 +141,30 @@ export default function Monitoring() {
       </div>
 
       <main className="max-w-5xl mx-auto px-6 py-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+
+        {/* ── User Tracking ── */}
+        <SectionHeading>User Tracking</SectionHeading>
+
+        <Tile
+          title="Anonymous Users"
+          description="Persistent browser IDs via localStorage — clears with browser data"
+          wide
+        >
+          {stats?.userStats ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                { label: 'Unique Users', val: stats.userStats.uniqueUsers, color: 'text-accent' },
+                { label: 'Returning', val: stats.userStats.uniqueUsers > 0 ? `${Math.round(stats.userStats.returningRate)}%` : '—', color: 'text-success' },
+                { label: 'Avg Sessions', val: stats.userStats.avgSessionsPerUser > 0 ? stats.userStats.avgSessionsPerUser.toFixed(1) : '—', color: 'text-primary' },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="bg-subtle rounded-lg py-3">
+                  <p className={`text-2xl font-bold ${color} font-mono`}>{val ?? '—'}</p>
+                  <p className="text-xs text-muted mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-muted text-sm">No data yet — plays new tracking code needed</p>}
+        </Tile>
 
         {/* ── Player Activity ── */}
         <SectionHeading>Player Activity</SectionHeading>
@@ -100,6 +187,48 @@ export default function Monitoring() {
               ))}
             </div>
           ) : <p className="text-muted text-sm">Loading…</p>}
+        </Tile>
+
+        <Tile
+          title="Session Funnel"
+          description="Quiz sessions started vs completed all-time"
+        >
+          {stats?.sessionFunnel ? (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted">Started</span>
+                <span className="font-bold font-mono text-primary">{stats.sessionFunnel.started}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted">Completed</span>
+                <span className="font-bold font-mono text-success">{stats.sessionFunnel.completed}</span>
+              </div>
+              <div className="pt-2 border-t border-border-col flex justify-between items-center">
+                <span className="text-sm text-muted">Completion rate</span>
+                <span className="font-bold font-mono text-accent">
+                  {stats.sessionFunnel.started > 0 ? `${stats.sessionFunnel.completionRate?.toFixed(1)}%` : '—'}
+                </span>
+              </div>
+            </div>
+          ) : <p className="text-muted text-sm">No data yet</p>}
+        </Tile>
+
+        <Tile
+          title="Skip Rate by Mode"
+          description="Percentage of questions skipped per quiz mode"
+          wide
+        >
+          {skipRateData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart data={skipRateData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="mode" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} formatter={(v) => `${v}%`} />
+                <Bar dataKey="rate" fill="var(--warning)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p className="text-muted text-sm">No data yet</p>}
         </Tile>
 
         <Tile

@@ -36,6 +36,7 @@ export default function CurrencyQuiz() {
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
     beginSubmit, endSubmit,
+    sessionId, userId,
   } = useQuizCore({
     mode: 'currency',
     region,
@@ -57,7 +58,7 @@ export default function CurrencyQuiz() {
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
     if (!beginSubmit()) return
-    const res = await api.submitCurrencyAnswer(current.isoA2, answer)
+    const res = await api.submitCurrencyAnswer(current.isoA2, answer, sessionId, region, userId)
     if (res.result === 'CORRECT') {
       setFlashState('correct')
       setMatchedCountry(res.canonicalAnswer)

@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -122,6 +123,7 @@ public class DataRefreshService {
         }
     }
 
+    @CacheEvict(cacheNames = {"geojson", "countries"}, allEntries = true)
     @Scheduled(cron = "0 0 2 * * *")
     public void scheduledRefresh() {
         if (!refreshEnabled) return;
@@ -131,6 +133,7 @@ public class DataRefreshService {
         try { refreshCities(); } catch (Exception e) { log.error("Scheduled city refresh failed", e); }
     }
 
+    @CacheEvict(cacheNames = {"geojson", "countries"}, allEntries = true)
     @Transactional
     public void refreshAll() throws Exception {
         refreshCountries();

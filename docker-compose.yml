@@ -28,6 +28,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       GEONAMES_USERNAME: ${GEONAMES_USERNAME:-demo}
       DATA_REFRESH_ENABLED: "true"
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev}
 
   frontend:
     build:

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Activity, Table2, Sun, Moon, Settings2 } from 'lucide-react'
+import { Trophy, Activity, Table2, Sun, Moon, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext.jsx'
 import GlobalSettingsModal from './GlobalSettingsModal.jsx'
@@ -46,7 +46,8 @@ export default function Navbar() {
         <Link to="/" className="font-bold text-primary text-[15px] tracking-tight shrink-0 hover:opacity-80 transition-opacity mr-3">
           GeoQuiz
         </Link>
-        <NavIconBtn icon={<Activity size={18} strokeWidth={1.5} />} label="Monitoring" to="/monitoring" />
+        <NavIconBtn icon={<Trophy  size={18} strokeWidth={1.5} />} label="Game Analytics" to="/game-analytics" />
+        <NavIconBtn icon={<Activity size={18} strokeWidth={1.5} />} label="Admin Dashboard" to="/monitoring" />
         <NavIconBtn icon={<Table2 size={18} strokeWidth={1.5} />}   label="Countries Data" to="/admin" />
 
         {/* Right: settings + theme */}

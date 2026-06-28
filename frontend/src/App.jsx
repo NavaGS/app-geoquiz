@@ -10,6 +10,7 @@ import CurrencyQuiz from './pages/CurrencyQuiz.jsx'
 import LanguageQuiz from './pages/LanguageQuiz.jsx'
 import BordersQuiz from './pages/BordersQuiz.jsx'
 import Monitoring from './pages/Monitoring.jsx'
+import GameAnalytics from './pages/GameAnalytics.jsx'
 import AdminCentre from './pages/AdminCentre.jsx'
 import SessionEnd from './pages/SessionEnd.jsx'
 import MultiplayerHome from './pages/MultiplayerHome.jsx'
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/quiz/language" element={<LanguageQuiz />} />
         <Route path="/quiz/borders" element={<BordersQuiz />} />
         <Route path="/monitoring" element={<Monitoring />} />
+        <Route path="/game-analytics" element={<GameAnalytics />} />
         <Route path="/admin" element={<AdminCentre />} />
         <Route path="/session-end" element={<SessionEnd />} />
         <Route path="/multiplayer" element={<MultiplayerHome />} />

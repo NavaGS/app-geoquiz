@@ -25,6 +25,7 @@ export default function BordersQuiz() {
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
     beginSubmit, endSubmit,
+    sessionId, userId,
   } = useQuizCore({
     mode: 'borders',
     region,
@@ -54,7 +55,7 @@ export default function BordersQuiz() {
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
     if (!beginSubmit()) return
-    const res = await api.submitBorderAnswer(current.isoA2, answer)
+    const res = await api.submitBorderAnswer(current.isoA2, answer, sessionId, region, userId)
     const borderNames = res.borderNames || []
     setLastBorderNames(borderNames)
     if (res.result === 'CORRECT') {
