@@ -1,5 +1,13 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
+function getAdminToken() {
+  return localStorage.getItem('gq_admin_token') || ''
+}
+
+function adminHeaders() {
+  return { 'X-Admin-Token': getAdminToken() }
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
@@ -28,7 +36,7 @@ export const api = {
   submitBorderAnswer: (countryIso, answer, sessionId, region, userId) =>
     request('/api/quiz/border-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region, userId }) }),
   logEvent: (body) => request('/api/events/quiz', { method: 'POST', body: JSON.stringify(body) }),
-  getStats: () => request('/api/monitoring/stats'),
+  getStats: () => request('/api/monitoring/stats', { headers: adminHeaders() }),
   getPublicStats: () => request('/api/public/stats'),
   getLeaderboard: (mode, limit = 10) => request(`/api/leaderboard?mode=${encodeURIComponent(mode)}&limit=${limit}`),
   triggerRefresh: () => request('/admin/refresh-data', { method: 'POST' }),

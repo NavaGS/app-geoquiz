@@ -18,6 +18,9 @@ spring:
 frontend:
   origin: ${FRONTEND_ORIGIN:}
 
+admin:
+  token: ${ADMIN_TOKEN:dev}
+
 geonames:
   username: ${GEONAMES_USERNAME:demo}
 

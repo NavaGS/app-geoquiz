@@ -99,7 +99,8 @@ function MonitoringDashboard() {
     loadStats()
     const interval = setInterval(loadStats, 30000)
 
-    const sse = new EventSource(SSE_URL)
+    const token = localStorage.getItem('gq_admin_token') || ''
+    const sse = new EventSource(`${SSE_URL}?adminToken=${encodeURIComponent(token)}`)
     sseRef.current = sse
     sse.addEventListener('stats', e => {
       try {

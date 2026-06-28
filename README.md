@@ -46,7 +46,16 @@ cd geoquiz
 cp .env.example .env
 ```
 
-The defaults work out of the box — no API keys or external accounts needed.
+Edit `.env` if needed — the defaults work out of the box for local development:
+
+| Variable | Default | Description |
+|---|---|---|
+| `POSTGRES_USER` | `geoquiz` | Database user |
+| `POSTGRES_PASSWORD` | `geoquiz` | Database password |
+| `GEONAMES_USERNAME` | `demo` | GeoNames account (demo is rate-limited; register free at geonames.org for a personal one) |
+| `DATA_REFRESH_ENABLED` | `true` | Nightly country data refresh |
+| `FRONTEND_ORIGIN` | _(blank)_ | Allowed CORS origin in production |
+| `ADMIN_TOKEN` | `dev` | Token for the admin monitoring dashboard — **change this before going public** |
 
 ### 3. Start the app
 
@@ -89,7 +98,7 @@ docker compose up --build
 Frontend hot-reload is active — changes to `frontend/src/` appear in the browser instantly. Backend changes require a container rebuild:
 
 ```bash
-docker compose build backend && docker compose up -d --no-deps --force-recreate backend
+docker compose build backend && docker compose up -d backend
 ```
 
 ### Option B — Split terminals (faster backend iteration)
@@ -105,6 +114,7 @@ cd backend
 POSTGRES_URL=jdbc:postgresql://localhost:5432/geoquiz \
 POSTGRES_USER=geoquiz \
 POSTGRES_PASSWORD=geoquiz \
+ADMIN_TOKEN=dev \
 mvn spring-boot:run
 ```
 
@@ -133,14 +143,16 @@ The backend detects empty tables on startup and re-seeds everything.
 
 The frontend is a static Vite build suited for Vercel. The backend (Spring Boot + WebSocket) needs a long-running host such as Railway, Render, or Fly.io.
 
-**Backend (Railway)** — set these environment variables:
+**Backend (Railway / Render / Fly.io)** — set these environment variables:
 
 | Variable | Value |
 |---|---|
-| `POSTGRES_URL` | Railway PostgreSQL URL |
-| `POSTGRES_USER` | db user |
-| `POSTGRES_PASSWORD` | db password |
-| `FRONTEND_ORIGIN` | `https://your-app.vercel.app` |
+| `POSTGRES_URL` | Provider PostgreSQL URL |
+| `POSTGRES_USER` | DB user |
+| `POSTGRES_PASSWORD` | DB password |
+| `FRONTEND_ORIGIN` | `https://your-app.vercel.app` (no trailing slash) |
+| `ADMIN_TOKEN` | A strong random secret (e.g. `openssl rand -hex 32`) |
+| `GEONAMES_USERNAME` | Your free GeoNames username |
 
 **Frontend (Vercel)** — set these environment variables:
 
@@ -148,8 +160,11 @@ The frontend is a static Vite build suited for Vercel. The backend (Spring Boot 
 |---|---|
 | `VITE_API_URL` | `https://your-backend.railway.app` |
 | `VITE_WS_URL` | `https://your-backend.railway.app` |
+| `VITE_ADMIN_TOKEN` | Same value as `ADMIN_TOKEN` on the backend |
 
 The `vercel.json` at the repo root handles SPA client-side routing automatically.
+
+> **Social sharing:** `public/og-image.svg` is the link preview card shown on Reddit, Discord, and iMessage. Twitter/X requires a raster image — open the SVG in a browser, screenshot it at 1200×630, save as `public/og-image.png`, and update the three `og:image` / `twitter:image` tags in `index.html` to point to `/og-image.png`.
 
 ---
 
@@ -158,41 +173,64 @@ The `vercel.json` at the repo root handles SPA client-side routing automatically
 ```
 geoquiz/
 ├── frontend/               React 18 + Vite + Tailwind + D3
+│   ├── public/             Static assets (favicon, OG social card)
 │   ├── vercel.json         SPA rewrite rules for Vercel
 │   ├── Dockerfile          Production build (serves static dist)
 │   ├── Dockerfile.dev      Dev build (Vite dev server, used by docker-compose)
 │   └── src/
-│       ├── pages/          Quiz modes + multiplayer pages (Lobby, MultiplayerGame, ...)
+│       ├── pages/          Quiz modes, SessionEnd, GameAnalytics, Monitoring, ...
 │       ├── components/     FlipQuiz, FlipCard, SessionTimer, QuestionTimer, ...
 │       ├── contexts/       ThemeContext, RoomContext (multiplayer state)
-│       ├── hooks/          useQuizSession, useCountdownTimer, useStompClient
-│       └── utils/          difficultySettings.js, gameplaySettings.js
+│       ├── hooks/          useQuizCore, useQuizSession, useCountdownTimer, useStompClient
+│       └── utils/          anonymousUser.js, difficultySettings.js, gameplaySettings.js
 ├── backend/                Java 21 + Spring Boot 3.2
 │   └── src/main/java/com/geoquiz/
+│       ├── config/         WebConfig (CORS), WebSocketConfig, AdminTokenFilter
 │       ├── controller/     REST endpoints + WebSocket STOMP handlers
-│       ├── service/        DataRefreshService, QuizAnswerService, RoomService, GameService
-│       ├── entity/         JPA entities (Country, Room, RoomPlayer, ...)
+│       ├── service/        DataRefreshService, QuizAnswerService, RoomService, MonitoringService
+│       ├── entity/         JPA entities (Country, Room, RoomPlayer, QuizEvent, ...)
 │       └── repository/     Spring Data repos
 ├── docker-compose.yml
-├── .env.example
+├── .env                    Local secrets (not committed)
+├── .env.example            Template — copy to .env to get started
 └── SPEC.md                 Full technical + functional specification
 ```
 
 ---
 
-## Admin Centre
+## Pages
 
-Navigate to [http://localhost:5173/admin](http://localhost:5173/admin) to:
+| Path | Access | Description |
+|---|---|---|
+| `/` | Public | Home — pick a quiz mode |
+| `/quiz/*` | Public | Solo quiz pages (flags, map, capitals, cities, shapes, currency, language, borders) |
+| `/session-end` | Public | Score summary after a completed session |
+| `/game-analytics` | Public | Global leaderboard (Countdown mode) and community stats |
+| `/multiplayer` | Public | Create or join a multiplayer room |
+| `/admin` | Public | Countries data browser |
+| `/monitoring` | Token-gated | Live event stream, session funnel, skip rates, user tracking |
 
-- **Countries Data** — searchable, sortable table of all 250 countries with data coverage status
-- **Monitoring** — live quiz event stream and aggregate stats
-- **Settings** — configure difficulty filter (1–5, inclusive or exact) and game mode (none / countdown timer / max questions with optional per-question timer)
+### Monitoring dashboard
+
+Navigate to [http://localhost:5173/monitoring](http://localhost:5173/monitoring). You will be prompted for the admin token. Enter whatever `ADMIN_TOKEN` / `VITE_ADMIN_TOKEN` is set to (default: `dev` locally).
+
+The token is stored in `localStorage` under `gq_admin_token` — you only need to enter it once per browser. The check is enforced at the HTTP level on the backend, so the stats API is not accessible without the token regardless of the frontend.
+
+### Game Analytics (public leaderboard)
+
+[http://localhost:5173/game-analytics](http://localhost:5173/game-analytics) — no token required. Shows top Countdown scores per quiz mode (Flags, Map, Shapes, Capitals) and community accuracy stats. Scores appear here after completing a Countdown session.
+
+---
+
+## Anonymous User Tracking
+
+Players are tracked without sign-up via a persistent UUID stored in `localStorage` under `gq_uid`. This survives page refreshes and new sessions on the same browser but is scoped to one device. All quiz events (session start, answers, skips, completions) are tagged with this ID and visible in the Monitoring dashboard.
 
 ---
 
 ## Data Sources
 
-All public, no API keys required:
+All public, no API keys required for basic operation:
 
 | Data | Source |
 |---|---|
