@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { api } from '../api/client.js'
 import { v4 as uuidv4 } from '../utils/uuid.js'
+import { getAnonymousUserId } from '../utils/anonymousUser.js'
 
 export function useQuizSession({ mode, evalMode, region }) {
   const sessionId = useRef(uuidv4())
@@ -15,6 +16,7 @@ export function useQuizSession({ mode, evalMode, region }) {
         mode: evalMode || mode,
         sessionId: sessionId.current,
         regionFilter: region,
+        userId: getAnonymousUserId(),
       })
       return result
     } catch (e) {

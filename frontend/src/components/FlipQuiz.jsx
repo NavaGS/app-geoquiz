@@ -11,10 +11,12 @@ import { api } from '../api/client.js'
 import { getDifficultySettings, difficultyFilter } from '../utils/difficultySettings.js'
 import { getGameplaySettings } from '../utils/gameplaySettings.js'
 import { getRegion } from '../utils/regionSettings.js'
+import { getAnonymousUserId } from '../utils/anonymousUser.js'
 
 export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, renderBack, getQuestion, getCanonical, questionKey, filterFn, modeName, modeLabel }) {
   const navigate = useNavigate()
   const region = getRegion()
+  const userId = getAnonymousUserId()
 
   const [countries, setCountries] = useState([])
   const [queue, setQueue] = useState([])
@@ -30,7 +32,7 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
   const inputRef = useRef()
   const gpRef = useRef(null)
   const scoreRef = useRef(null)
-  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } = useQuizSession({ mode, evalMode, region })
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef, sessionId } = useQuizSession({ mode, evalMode, region })
   useEffect(() => { scoreRef.current = score }, [score])
 
   // ── Per-question guards (fix 1.1 + 1.2) ─────────────────────────────────────
@@ -52,6 +54,16 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       if (unanswered) recordResult(currentISO, 'SKIP', getCanonical ? getCanonical(c) : null, null, null)
       const isNewBest = savePersonalBest()
       const sessionScore = unanswered ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 } : scoreRef.current
+      const total = sessionScore.correct + sessionScore.wrong + sessionScore.skipped
+      api.logEvent({
+        sessionId,
+        userId,
+        mode,
+        regionFilter: region,
+        eventType: 'quiz_complete',
+        answerGiven: `${sessionScore.correct}/${total}`,
+        similarityScore: total > 0 ? sessionScore.correct / total : 0,
+      }).catch(() => {})
       navigate('/session-end', { state: { score: sessionScore, mode, region, isNewBest, results: historyRef.current } })
     }, [savePersonalBest, navigate, mode, region, getQuestion, getCanonical, recordResult]),
   })
@@ -107,6 +119,8 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
         setCurrent(shuffled[0])
         setLoading(false)
 
+        api.logEvent({ sessionId, userId, mode, regionFilter: region, eventType: 'session_start' }).catch(() => {})
+
         if (gp.mode === 'countdown') {
           sessionTimer.startFrom(gp.countdownSecs)
         }
@@ -139,9 +153,18 @@ export default function FlipQuiz({ mode, evalMode, accentColor, renderFront, ren
       const next = prev.slice(1)
       if (next.length === 0) {
         const isNewBest = savePersonalBest()
-        // Use scoreRef.current — the useState `score` closure may be one render behind
-        // when this callback fires synchronously (before the setScore update has batched).
-        navigate('/session-end', { state: { score: scoreRef.current, mode, region, isNewBest, results: historyRef.current } })
+        const s = scoreRef.current
+        const total = s.correct + s.wrong + s.skipped
+        api.logEvent({
+          sessionId,
+          userId,
+          mode,
+          regionFilter: region,
+          eventType: 'quiz_complete',
+          answerGiven: `${s.correct}/${total}`,
+          similarityScore: total > 0 ? s.correct / total : 0,
+        }).catch(() => {})
+        navigate('/session-end', { state: { score: s, mode, region, isNewBest, results: historyRef.current } })
         return prev
       }
       setCurrent(next[0])

@@ -60,6 +60,7 @@ public class QuizController {
             event.setWasCorrect(response.getResult() == AnswerResponse.Result.CORRECT);
             event.setSimilarityScore(response.getSimilarityScore());
             event.setRegionFilter(request.getRegionFilter());
+            event.setUserId(request.getUserId());
             quizEventRepository.save(event);
 
             log.info("quiz_answer",
@@ -83,6 +84,7 @@ public class QuizController {
         String answer = body.get("answer");
         String sessionId = body.get("sessionId");
         String regionFilter = body.get("regionFilter");
+        String userId = body.get("userId");
         if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
 
         Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
@@ -140,6 +142,7 @@ public class QuizController {
         langEvent.setEventType("answer");
         langEvent.setCountryIso(countryIso);
         langEvent.setAnswerGiven(answer);
+        langEvent.setUserId(userId);
         langEvent.setWasCorrect(wasCorrect);
         quizEventRepository.save(langEvent);
         log.info("quiz_answer",
@@ -159,6 +162,7 @@ public class QuizController {
         String answer = body.get("answer");
         String sessionId = body.get("sessionId");
         String regionFilter = body.get("regionFilter");
+        String userId = body.get("userId");
         if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
 
         Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
@@ -219,6 +223,7 @@ public class QuizController {
         currencyEvent.setEventType("answer");
         currencyEvent.setCountryIso(countryIso);
         currencyEvent.setAnswerGiven(answer);
+        currencyEvent.setUserId(userId);
         currencyEvent.setWasCorrect(wasCorrect);
         quizEventRepository.save(currencyEvent);
         log.info("quiz_answer",
@@ -238,6 +243,7 @@ public class QuizController {
         String answer = body.get("answer");
         String sessionId = body.get("sessionId");
         String regionFilter = body.get("regionFilter");
+        String userId = body.get("userId");
         if (countryIso == null || answer == null) return ResponseEntity.badRequest().build();
 
         Country country = countryRepository.findByIsoA2IgnoreCase(countryIso)
@@ -311,6 +317,7 @@ public class QuizController {
             borderEvent.setEventType("answer");
             borderEvent.setCountryIso(countryIso);
             borderEvent.setAnswerGiven(answer);
+            borderEvent.setUserId(userId);
             borderEvent.setWasCorrect(wasCorrect);
             quizEventRepository.save(borderEvent);
             log.info("quiz_answer",
@@ -335,6 +342,7 @@ public class QuizController {
         event.setAnswerGiven(request.getAnswerGiven());
         event.setWasCorrect(request.getWasCorrect());
         event.setSimilarityScore(request.getSimilarityScore());
+        event.setUserId(request.getUserId());
         quizEventRepository.save(event);
         return ResponseEntity.ok().build();
     }

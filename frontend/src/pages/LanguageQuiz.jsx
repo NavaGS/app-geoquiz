@@ -23,7 +23,7 @@ export default function LanguageQuiz() {
     sessionTimer, questionTimer,
     advanceRef, advanceQueue,
     beginSubmit, endSubmit,
-    sessionId,
+    sessionId, userId,
   } = useQuizCore({
     mode: 'language',
     region,
@@ -43,7 +43,7 @@ export default function LanguageQuiz() {
   async function handleSubmit() {
     if (!answer.trim() || !current || feedback) return
     if (!beginSubmit()) return
-    const res = await api.submitLanguageAnswer(current.isoA2, answer, sessionId, region)
+    const res = await api.submitLanguageAnswer(current.isoA2, answer, sessionId, region, userId)
     const fb = { result: res.result, canonicalName: res.canonicalAnswer, allLanguages: res.allLanguages }
     if (res.result === 'CORRECT') {
       setFlashState('correct')

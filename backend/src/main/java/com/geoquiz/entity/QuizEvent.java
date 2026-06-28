@@ -19,6 +19,9 @@ public class QuizEvent {
     @Column(name = "session_id")
     private String sessionId;
 
+    @Column(name = "user_id")
+    private String userId;
+
     private String mode;
 
     @Column(name = "region_filter")
@@ -51,6 +54,8 @@ public class QuizEvent {
     public void setId(Long id) { this.id = id; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
     public String getMode() { return mode; }
     public void setMode(String mode) { this.mode = mode; }
     public String getRegionFilter() { return regionFilter; }

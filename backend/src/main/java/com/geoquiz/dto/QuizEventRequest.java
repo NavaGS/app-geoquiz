@@ -9,6 +9,7 @@ public class QuizEventRequest {
     private String answerGiven;
     private Boolean wasCorrect;
     private Double similarityScore;
+    private String userId;
 
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
@@ -26,4 +27,6 @@ public class QuizEventRequest {
     public void setWasCorrect(Boolean wasCorrect) { this.wasCorrect = wasCorrect; }
     public Double getSimilarityScore() { return similarityScore; }
     public void setSimilarityScore(Double similarityScore) { this.similarityScore = similarityScore; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
 }

@@ -45,6 +45,17 @@ public class MonitoringService {
         funnel.put("completionRate", started == 0 ? 0.0 : (double) completed / started * 100);
         stats.put("sessionFunnel", funnel);
 
+        // User tracking stats
+        long uniqueUsers = quizEventRepository.countDistinctUsers();
+        long returningUsers = uniqueUsers > 0 ? quizEventRepository.countReturningUsers() : 0;
+        Double avgSessions = uniqueUsers > 0 ? quizEventRepository.avgSessionsPerUser() : null;
+        Map<String, Object> userStats = new LinkedHashMap<>();
+        userStats.put("uniqueUsers", uniqueUsers);
+        userStats.put("returningUsers", returningUsers);
+        userStats.put("returningRate", uniqueUsers == 0 ? 0.0 : (double) returningUsers / uniqueUsers * 100);
+        userStats.put("avgSessionsPerUser", avgSessions != null ? avgSessions : 0.0);
+        stats.put("userStats", userStats);
+
         // Skip rate by mode
         List<Object[]> skipRows = quizEventRepository.skipRateByMode();
         Map<String, Double> skipRates = new LinkedHashMap<>();
@@ -121,6 +132,46 @@ public class MonitoringService {
         stats.put("errorRates", errorRates);
 
         stats.put("timestamp", now.toString());
+        return stats;
+    }
+
+    public Map<String, Object> getPublicStats() {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        Instant now = Instant.now();
+
+        stats.put("activePlayers", quizEventRepository.countDistinctSessionsSince(now.minus(30, java.time.temporal.ChronoUnit.MINUTES)));
+
+        List<Object[]> modeRows = quizEventRepository.countByMode();
+        Map<String, Long> modeCounts = new LinkedHashMap<>();
+        for (Object[] row : modeRows) modeCounts.put((String) row[0], (Long) row[1]);
+        stats.put("modePopularity", modeCounts);
+
+        List<Object[]> accuracyRows = quizEventRepository.accuracyByMode();
+        Map<String, Double> modeAccuracy = new LinkedHashMap<>();
+        for (Object[] row : accuracyRows) {
+            String mode = (String) row[0];
+            long correct = ((Number) row[1]).longValue();
+            long total = ((Number) row[2]).longValue();
+            modeAccuracy.put(mode, total == 0 ? 0.0 : (double) correct / total * 100);
+        }
+        stats.put("modeAccuracy", modeAccuracy);
+
+        List<Object[]> hardestRows = quizEventRepository.hardestCountries();
+        List<Map<String, Object>> hardest = new ArrayList<>();
+        int limit = Math.min(10, hardestRows.size());
+        for (int i = 0; i < limit; i++) {
+            Object[] row = hardestRows.get(i);
+            long total = ((Number) row[1]).longValue();
+            long correct = ((Number) row[2]).longValue();
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("iso", row[0]);
+            entry.put("total", total);
+            entry.put("correct", correct);
+            entry.put("accuracy", total == 0 ? 0.0 : (double) correct / total * 100);
+            hardest.add(entry);
+        }
+        stats.put("hardestCountries", hardest);
+
         return stats;
     }
 

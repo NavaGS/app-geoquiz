@@ -21,14 +21,16 @@ export const api = {
   getCities: (iso) => request(`/api/countries/${iso}/cities`),
   getWorldGeoJson: (region = 'All') => request(`/api/map/geojson?region=${encodeURIComponent(region)}`),
   submitAnswer: (body) => request('/api/quiz/answer', { method: 'POST', body: JSON.stringify(body) }),
-  submitLanguageAnswer: (countryIso, answer, sessionId, region) =>
-    request('/api/quiz/language-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region }) }),
-  submitCurrencyAnswer: (countryIso, answer, sessionId, region) =>
-    request('/api/quiz/currency-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region }) }),
-  submitBorderAnswer: (countryIso, answer, sessionId, region) =>
-    request('/api/quiz/border-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region }) }),
+  submitLanguageAnswer: (countryIso, answer, sessionId, region, userId) =>
+    request('/api/quiz/language-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region, userId }) }),
+  submitCurrencyAnswer: (countryIso, answer, sessionId, region, userId) =>
+    request('/api/quiz/currency-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region, userId }) }),
+  submitBorderAnswer: (countryIso, answer, sessionId, region, userId) =>
+    request('/api/quiz/border-answer', { method: 'POST', body: JSON.stringify({ countryIso, answer, sessionId, regionFilter: region, userId }) }),
   logEvent: (body) => request('/api/events/quiz', { method: 'POST', body: JSON.stringify(body) }),
   getStats: () => request('/api/monitoring/stats'),
+  getPublicStats: () => request('/api/public/stats'),
+  getLeaderboard: (mode, limit = 10) => request(`/api/leaderboard?mode=${encodeURIComponent(mode)}&limit=${limit}`),
   triggerRefresh: () => request('/admin/refresh-data', { method: 'POST' }),
 
   // Multiplayer

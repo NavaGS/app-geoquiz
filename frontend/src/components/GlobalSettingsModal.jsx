@@ -12,16 +12,19 @@ export default function GlobalSettingsModal({ onClose }) {
   const [diffRating, setDiffRating] = useState(diff.rating)
   const [diffMode, setDiffMode] = useState(diff.mode)
   const [gpMode, setGpMode] = useState(gp.mode)
-  const [countdownSecs, setCountdownSecs] = useState(gp.countdownSecs)
-  const [maxQuestions, setMaxQuestions] = useState(gp.maxQuestions)
+  const [countdownSecs, setCountdownSecs] = useState(String(gp.countdownSecs))
+  const [maxQuestions, setMaxQuestions] = useState(String(gp.maxQuestions))
   const [perQTimer, setPerQTimer] = useState(gp.perQuestionTimer)
-  const [perQSecs, setPerQSecs] = useState(gp.perQuestionSecs)
+  const [perQSecs, setPerQSecs] = useState(String(gp.perQuestionSecs))
   const [saved, setSaved] = useState(false)
 
   function save() {
+    const csNum = Math.max(10, Math.min(600, parseInt(countdownSecs) || 60))
+    const mqNum = Math.max(1,  Math.min(200, parseInt(maxQuestions)  || 20))
+    const pqNum = Math.max(5,  Math.min(120, parseInt(perQSecs)      || 15))
     setRegion(region)
     setDifficultySettings(diffRating, diffMode)
-    setGameplaySettings({ mode: gpMode, countdownSecs, maxQuestions, perQuestionTimer: perQTimer, perQuestionSecs: perQSecs })
+    setGameplaySettings({ mode: gpMode, countdownSecs: csNum, maxQuestions: mqNum, perQuestionTimer: perQTimer, perQuestionSecs: pqNum })
     setSaved(true)
     setTimeout(onClose, 700)
   }
@@ -130,7 +133,7 @@ export default function GlobalSettingsModal({ onClose }) {
                 <span className="text-xs text-muted block mb-1">Session duration (seconds)</span>
                 <input
                   type="number" min="10" max="600" value={countdownSecs}
-                  onChange={e => setCountdownSecs(parseInt(e.target.value) || 60)}
+                  onChange={e => setCountdownSecs(e.target.value)}
                   className="w-full bg-subtle border border-border-col rounded-lg px-3 py-2 text-sm text-primary focus:outline-none focus:border-accent font-mono"
                 />
               </label>
@@ -142,7 +145,7 @@ export default function GlobalSettingsModal({ onClose }) {
                   <span className="text-xs text-muted block mb-1">Questions per session</span>
                   <input
                     type="number" min="1" max="200" value={maxQuestions}
-                    onChange={e => setMaxQuestions(parseInt(e.target.value) || 20)}
+                    onChange={e => setMaxQuestions(e.target.value)}
                     className="w-full bg-subtle border border-border-col rounded-lg px-3 py-2 text-sm text-primary focus:outline-none focus:border-accent font-mono"
                   />
                 </label>
@@ -160,7 +163,7 @@ export default function GlobalSettingsModal({ onClose }) {
                     <span className="text-xs text-muted block mb-1">Seconds per question</span>
                     <input
                       type="number" min="5" max="120" value={perQSecs}
-                      onChange={e => setPerQSecs(parseInt(e.target.value) || 15)}
+                      onChange={e => setPerQSecs(e.target.value)}
                       className="w-full bg-subtle border border-border-col rounded-lg px-3 py-2 text-sm text-primary focus:outline-none focus:border-accent font-mono"
                     />
                   </label>

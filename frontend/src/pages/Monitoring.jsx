@@ -2,6 +2,59 @@ import { useState, useEffect, useRef } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { api, SSE_URL } from '../api/client.js'
 
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'dev'
+
+function LockScreen({ onUnlock }) {
+  const [input, setInput] = useState('')
+  const [shake, setShake] = useState(false)
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    if (input === ADMIN_TOKEN) {
+      localStorage.setItem('gq_admin_token', ADMIN_TOKEN)
+      onUnlock()
+    } else {
+      setShake(true)
+      setInput('')
+      setTimeout(() => setShake(false), 600)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-base flex items-center justify-center px-4">
+      <div className="bg-surface border border-border-col rounded-2xl p-8 w-full max-w-sm text-center space-y-5 shadow-lg">
+        <div className="text-5xl">🔒</div>
+        <div>
+          <p className="font-bold text-primary text-lg">Admin Dashboard</p>
+          <p className="text-xs text-muted mt-1">Enter your admin token to continue</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="password"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Token"
+            autoFocus
+            className={`w-full px-3 py-2.5 rounded-lg bg-subtle border text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent transition-all ${
+              shake ? 'border-error focus:ring-error animate-[shake_0.4s_ease]' : 'border-border-col'
+            }`}
+          />
+          <button
+            type="submit"
+            className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            Unlock
+          </button>
+        </form>
+        <p className="text-xs text-muted">
+          Looking for public stats?{' '}
+          <a href="/game-analytics" className="text-accent hover:underline">Game Analytics →</a>
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function SectionHeading({ children }) {
   return (
     <div className="col-span-full mt-2 first:mt-0">
@@ -23,6 +76,14 @@ function Tile({ title, description, children, wide }) {
 }
 
 export default function Monitoring() {
+  const [unlocked, setUnlocked] = useState(() => localStorage.getItem('gq_admin_token') === ADMIN_TOKEN)
+
+  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />
+
+  return <MonitoringDashboard />
+}
+
+function MonitoringDashboard() {
   const [stats, setStats] = useState(null)
   const [liveEvents, setLiveEvents] = useState([])
   const [error, setError] = useState(null)
@@ -79,6 +140,30 @@ export default function Monitoring() {
       </div>
 
       <main className="max-w-5xl mx-auto px-6 py-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+
+        {/* ── User Tracking ── */}
+        <SectionHeading>User Tracking</SectionHeading>
+
+        <Tile
+          title="Anonymous Users"
+          description="Persistent browser IDs via localStorage — clears with browser data"
+          wide
+        >
+          {stats?.userStats ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                { label: 'Unique Users', val: stats.userStats.uniqueUsers, color: 'text-accent' },
+                { label: 'Returning', val: stats.userStats.uniqueUsers > 0 ? `${Math.round(stats.userStats.returningRate)}%` : '—', color: 'text-success' },
+                { label: 'Avg Sessions', val: stats.userStats.avgSessionsPerUser > 0 ? stats.userStats.avgSessionsPerUser.toFixed(1) : '—', color: 'text-primary' },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="bg-subtle rounded-lg py-3">
+                  <p className={`text-2xl font-bold ${color} font-mono`}>{val ?? '—'}</p>
+                  <p className="text-xs text-muted mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-muted text-sm">No data yet — plays new tracking code needed</p>}
+        </Tile>
 
         {/* ── Player Activity ── */}
         <SectionHeading>Player Activity</SectionHeading>
