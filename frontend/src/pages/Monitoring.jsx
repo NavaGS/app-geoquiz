@@ -60,6 +60,7 @@ export default function Monitoring() {
 
   const modePop = stats ? Object.entries(stats.modePopularity || {}).map(([mode, count]) => ({ mode, count })) : []
   const modeAcc = stats ? Object.entries(stats.modeAccuracy || {}).map(([mode, accuracy]) => ({ mode, accuracy: Math.round(accuracy) })) : []
+  const skipRateData = stats ? Object.entries(stats.skipRateByMode || {}).map(([mode, rate]) => ({ mode, rate: Math.round(rate) })) : []
 
   const requestStatus = stats?.errorRates ? (() => {
     const total = stats.errorRates.total || 0
@@ -100,6 +101,48 @@ export default function Monitoring() {
               ))}
             </div>
           ) : <p className="text-muted text-sm">Loading…</p>}
+        </Tile>
+
+        <Tile
+          title="Session Funnel"
+          description="Quiz sessions started vs completed all-time"
+        >
+          {stats?.sessionFunnel ? (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted">Started</span>
+                <span className="font-bold font-mono text-primary">{stats.sessionFunnel.started}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted">Completed</span>
+                <span className="font-bold font-mono text-success">{stats.sessionFunnel.completed}</span>
+              </div>
+              <div className="pt-2 border-t border-border-col flex justify-between items-center">
+                <span className="text-sm text-muted">Completion rate</span>
+                <span className="font-bold font-mono text-accent">
+                  {stats.sessionFunnel.started > 0 ? `${stats.sessionFunnel.completionRate?.toFixed(1)}%` : '—'}
+                </span>
+              </div>
+            </div>
+          ) : <p className="text-muted text-sm">No data yet</p>}
+        </Tile>
+
+        <Tile
+          title="Skip Rate by Mode"
+          description="Percentage of questions skipped per quiz mode"
+          wide
+        >
+          {skipRateData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart data={skipRateData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="mode" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }} formatter={(v) => `${v}%`} />
+                <Bar dataKey="rate" fill="var(--warning)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p className="text-muted text-sm">No data yet</p>}
         </Tile>
 
         <Tile

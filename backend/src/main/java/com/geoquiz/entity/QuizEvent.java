@@ -4,7 +4,12 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "quiz_events")
+@Table(name = "quiz_events", indexes = {
+    @Index(name = "idx_quiz_events_session_id", columnList = "session_id"),
+    @Index(name = "idx_quiz_events_created_at", columnList = "created_at"),
+    @Index(name = "idx_quiz_events_mode", columnList = "mode"),
+    @Index(name = "idx_quiz_events_event_type", columnList = "event_type")
+})
 public class QuizEvent {
 
     @Id

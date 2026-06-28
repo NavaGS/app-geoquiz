@@ -12,6 +12,7 @@ public class AnswerRequest {
 
     private String mode;
     private String sessionId;
+    private String regionFilter;
 
     public String getCountryIso() { return countryIso; }
     public void setCountryIso(String countryIso) { this.countryIso = countryIso; }
@@ -21,4 +22,6 @@ public class AnswerRequest {
     public void setMode(String mode) { this.mode = mode; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public String getRegionFilter() { return regionFilter; }
+    public void setRegionFilter(String regionFilter) { this.regionFilter = regionFilter; }
 }

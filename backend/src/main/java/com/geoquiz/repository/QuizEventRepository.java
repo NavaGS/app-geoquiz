@@ -23,4 +23,10 @@ public interface QuizEventRepository extends JpaRepository<QuizEvent, Long> {
     List<Object[]> hardestCountries();
 
     List<QuizEvent> findTop50ByOrderByCreatedAtDesc();
+
+    @Query("SELECT q.eventType, COUNT(q) FROM QuizEvent q WHERE q.eventType IN ('session_start', 'quiz_complete') GROUP BY q.eventType")
+    List<Object[]> countSessionLifecycleEvents();
+
+    @Query("SELECT q.mode, SUM(CASE WHEN q.eventType = 'skip' THEN 1 ELSE 0 END), SUM(CASE WHEN q.eventType IN ('answer', 'skip') THEN 1 ELSE 0 END) FROM QuizEvent q WHERE q.eventType IN ('answer', 'skip') AND q.mode IS NOT NULL GROUP BY q.mode")
+    List<Object[]> skipRateByMode();
 }

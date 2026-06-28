@@ -64,7 +64,7 @@ export function useQuizCore({
   useEffect(() => { currentRef.current = current }, [current])
   useEffect(() => { flippedRef.current = flipped }, [flipped])
 
-  const { score, submitAnswer, recordResult, savePersonalBest, historyRef } =
+  const { score, submitAnswer, recordResult, savePersonalBest, historyRef, sessionId } =
     useQuizSession({ mode, evalMode, region })
 
   useEffect(() => { scoreRef.current = score }, [score])
@@ -75,7 +75,10 @@ export function useQuizCore({
     if (questionSettledRef.current) return
     questionSettledRef.current = true
     recordResult(iso, type, canonical, userAnswer, card)
-  }, [recordResult])
+    if (type === 'SKIP') {
+      api.logEvent({ sessionId, mode, regionFilter: region, eventType: 'skip', countryIso: iso }).catch(() => {})
+    }
+  }, [recordResult, sessionId, mode, region])
 
   // Submit-in-flight guard — call beginSubmit() before an async API call,
   // endSubmit() after the await resolves (on non-CORRECT paths). advanceQueue
@@ -119,8 +122,17 @@ export function useQuizCore({
       const sessionScore = unanswered
         ? { ...scoreRef.current, skipped: scoreRef.current.skipped + 1 }
         : scoreRef.current
+      const total = sessionScore.correct + sessionScore.wrong + sessionScore.skipped
+      api.logEvent({
+        sessionId,
+        mode,
+        regionFilter: region,
+        eventType: 'quiz_complete',
+        answerGiven: `${sessionScore.correct}/${total}`,
+        similarityScore: total > 0 ? sessionScore.correct / total : 0,
+      }).catch(() => {})
       navigate('/session-end', { state: { score: sessionScore, mode, region, isNewBest, results: historyRef.current } })
-    }, [mode, region, getIso, getCanonical, getCard, settledRecord, navigate]),
+    }, [sessionId, mode, region, getIso, getCanonical, getCard, settledRecord, navigate]),
   })
 
   const questionTimer = useCountdownTimer({
@@ -149,6 +161,8 @@ export function useQuizCore({
         setQueue(shuffled)
         setCurrent(shuffled[0] ?? null)
         setLoading(false)
+
+        api.logEvent({ sessionId, mode, regionFilter: region, eventType: 'session_start' }).catch(() => {})
 
         if (gp.mode === 'countdown') sessionTimer.startFrom(gp.countdownSecs)
       })
@@ -179,8 +193,18 @@ export function useQuizCore({
       const next = prev.slice(1)
       if (next.length === 0) {
         const isNewBest = savePersonalBestRef.current?.() ?? false
+        const s = scoreRef.current
+        const total = s.correct + s.wrong + s.skipped
+        api.logEvent({
+          sessionId,
+          mode,
+          regionFilter: region,
+          eventType: 'quiz_complete',
+          answerGiven: `${s.correct}/${total}`,
+          similarityScore: total > 0 ? s.correct / total : 0,
+        }).catch(() => {})
         navigate('/session-end', {
-          state: { score: scoreRef.current, mode, region, isNewBest, results: historyRef.current },
+          state: { score: s, mode, region, isNewBest, results: historyRef.current },
         })
         return prev
       }
@@ -200,7 +224,7 @@ export function useQuizCore({
     flipped, setFlipped, flippedRef,
     // Quiz session (scores, history, answer submission)
     // recordResult is the settled version — only records once per question
-    score, historyRef, submitAnswer, recordResult: settledRecord, savePersonalBest,
+    score, historyRef, submitAnswer, recordResult: settledRecord, savePersonalBest, sessionId,
     // Submit-in-flight guard — wrap async API calls with beginSubmit/endSubmit
     beginSubmit, endSubmit,
     // Timers

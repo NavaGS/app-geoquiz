@@ -32,6 +32,30 @@ public class MonitoringService {
         sessions.put("last60min", quizEventRepository.countDistinctSessionsSince(now.minus(60, ChronoUnit.MINUTES)));
         stats.put("activeSessions", sessions);
 
+        // Session funnel
+        Map<String, Long> lifecycleCounts = new LinkedHashMap<>();
+        for (Object[] row : quizEventRepository.countSessionLifecycleEvents()) {
+            lifecycleCounts.put((String) row[0], (Long) row[1]);
+        }
+        long started = lifecycleCounts.getOrDefault("session_start", 0L);
+        long completed = lifecycleCounts.getOrDefault("quiz_complete", 0L);
+        Map<String, Object> funnel = new LinkedHashMap<>();
+        funnel.put("started", started);
+        funnel.put("completed", completed);
+        funnel.put("completionRate", started == 0 ? 0.0 : (double) completed / started * 100);
+        stats.put("sessionFunnel", funnel);
+
+        // Skip rate by mode
+        List<Object[]> skipRows = quizEventRepository.skipRateByMode();
+        Map<String, Double> skipRates = new LinkedHashMap<>();
+        for (Object[] row : skipRows) {
+            String mode = (String) row[0];
+            long skips = ((Number) row[1]).longValue();
+            long attempts = ((Number) row[2]).longValue();
+            skipRates.put(mode, attempts == 0 ? 0.0 : (double) skips / attempts * 100);
+        }
+        stats.put("skipRateByMode", skipRates);
+
         // Mode popularity
         List<Object[]> modeRows = quizEventRepository.countByMode();
         Map<String, Long> modeCounts = new LinkedHashMap<>();

@@ -14,13 +14,14 @@ export function useQuizSession({ mode, evalMode, region }) {
         answer,
         mode: evalMode || mode,
         sessionId: sessionId.current,
+        regionFilter: region,
       })
       return result
     } catch (e) {
       console.error('Answer submission failed:', e)
       return { result: 'WRONG', similarityScore: 0 }
     }
-  }, [mode, evalMode])
+  }, [mode, evalMode, region])
 
   const recordResult = useCallback((countryIso, resultType, canonicalName, userAnswer = null, card = null) => {
     setScore(prev => ({
